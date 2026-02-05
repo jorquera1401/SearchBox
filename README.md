@@ -44,16 +44,29 @@ This project is built with **Vite** and **TypeScript**.
 
 ## 🧠 Enabling AI Features
 
-To use the Semantic Search features, you must enable Chrome's experimental AI flags (requires Chrome 127+ or Canary).
+To unlock the Semantic Search powers, you need to enable Chrome's experimental built-in AI (Gemini Nano).
 
-1.  Go to `chrome://flags`.
-2.  Enable the following:
-    - **Enforce Optimization Guide On Device Model**: `Enabled BypassPrefRequirement`
-    - **Prompt API for Gemini Nano**: `Enabled`
-    - **Optimization Guide On Device Model**: `Enabled`
-3.  Relaunch Chrome.
+**⚠️ Requirements**: Chrome 127+ (Dev or Canary suggested).
 
-*Once enabled, you will see a "✨ AI Ready" indicator in the search bar.*
+### Step 1: Enable Flags
+1.  Open `chrome://flags` in a new tab.
+2.  Search for and enable these specific flags:
+    *   **Enforce Optimization Guide On Device Model**: Set to `Enabled BypassPrefRequirement`. *(Crucial for bypassing hardware checks)*.
+    *   **Prompt API for Gemini Nano**: Set to `Enabled`.
+    *   **Optimization Guide On Device Model**: Set to `Enabled`.
+3.  Click **Relaunch** to restart Chrome.
+
+### Step 2: Verify Model Download
+After restarting, Chrome needs to download the model (~40MB - 1GB depending on components).
+1.  Go to `chrome://components`.
+2.  Look for **Optimization Guide On Device Model**.
+3.  Click **Check for update**.
+4.  If version is `0.0.0.0`, it may take a few minutes to download.
+
+### Step 3: Check Status
+Open the Tab Wind search (`Ctrl + Shift + O`).
+*   **"✨ AI Ready"**: The system is active. Searches will now understand meaning (e.g. "coding" finds GitHub).
+*   **(Hidden)**: Use standard keyword search while the model loads.
 
 ## 💻 Tech Stack
 
