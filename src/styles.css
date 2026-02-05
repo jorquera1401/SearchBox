@@ -1,0 +1,102 @@
+#tab-wind-search-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 2147483647; /* Max z-index */
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 100px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease-in-out;
+  isolation: isolate;
+}
+
+#tab-wind-search-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#tab-wind-modal {
+  background: #1e1e1e;
+  width: 600px;
+  max-width: 90%;
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #333;
+}
+
+#tab-wind-input {
+  width: 100%;
+  padding: 16px;
+  font-size: 18px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #333;
+  color: #fff;
+  outline: none;
+}
+
+#tab-wind-results {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 8px 0;
+  margin: 0;
+  list-style: none;
+}
+
+.tab-wind-item {
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  color: #ccc;
+  border-left: 2px solid transparent;
+}
+
+.tab-wind-item.selected {
+  background: #2d2d2d;
+  color: #fff;
+  border-left-color: #3b82f6;
+}
+
+.tab-wind-item:hover {
+  background: #252525;
+}
+
+.tab-wind-favicon {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+}
+
+.tab-wind-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tab-wind-title {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-wind-url {
+  font-size: 12px;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

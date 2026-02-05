@@ -1,0 +1,41 @@
+{
+    "manifest_version": 3,
+    "name": "Tab Wind Command",
+    "version": "1.0",
+    "description": "Fast tab search and switching command palette.",
+    "permissions": [
+        "tabs",
+        "scripting"
+    ],
+    "host_permissions": [
+        "<all_urls>"
+    ],
+    "background": {
+        "service_worker": "src/background.ts"
+    },
+    "action": {
+        "default_title": "Search Tabs"
+    },
+    "icons": {
+        "128": "icons/icon.svg"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "src/content.ts"
+            ]
+        }
+    ],
+    "commands": {
+        "toggle-search": {
+            "suggested_key": {
+                "default": "Ctrl+Shift+O",
+                "mac": "Command+Shift+O"
+            },
+            "description": "Toggle Tab Search"
+        }
+    }
+}
