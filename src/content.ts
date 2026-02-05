@@ -5,8 +5,12 @@ import './styles.css';
 if (window.hasTabWindRun) {
   console.log("Tab Wind: Already running in this context.");
 } else {
-  window.hasTabWindRun = true;
-  initContentScript();
+  try {
+    window.hasTabWindRun = true;
+    initContentScript();
+  } catch (e) {
+    console.error("Tab Wind: Critical error starting content script", e);
+  }
 }
 
 function initContentScript() {
@@ -260,20 +264,81 @@ function initContentScript() {
     host.style.pointerEvents = 'none';
   }
 
-  function renderResults() {
+  // --- UI Updates for AI ---
+  const aiIndicator = document.createElement('div');
+  aiIndicator.id = 'ai-indicator';
+  aiIndicator.style.cssText = 'position: absolute; right: 20px; top: 20px; font-size: 12px; color: #666; display: none;';
+  aiIndicator.textContent = '✨ AI Ready';
+  shadow.getElementById('modal')?.appendChild(aiIndicator);
+
+  if (semanticService.isAvailable) {
+    aiIndicator.style.display = 'block';
+  }
+
+  let debounceTimer: any;
+
+  function handleSearch() {
     const query = input.value.toLowerCase();
 
-    // Filter and score tabs
-    const filtered = openTabs.filter(tab => {
+    // 1. Immediate Keyword Search
+    const keywordResults = openTabs.filter(tab => {
       const title = (tab.title || '').toLowerCase();
       const url = (tab.url || '').toLowerCase();
       return title.includes(query) || url.includes(query);
     });
 
-    const top10 = filtered.slice(0, 10);
+    renderList(keywordResults);
+
+    // 2. Trigger Semantic Search (Debounced)
+    if (semanticService.isAvailable && query.length > 2) {
+      clearTimeout(debounceTimer);
+      aiIndicator.style.color = '#3b82f6'; // Blue when "thinking"
+      aiIndicator.textContent = '✨ AI Thinking...';
+
+      debounceTimer = setTimeout(async () => {
+        try {
+          const rankedIds = await semanticService.rankTabs(query, openTabs);
+          if (rankedIds.length > 0) {
+            // Re-order openTabs based on rank, or merge?
+            // Let's create a new sorted list: Ranked items first, then the rest.
+            const rankedTabs = rankedIds.map(id => openTabs.find(t => t.id === id)).filter(Boolean) as TabData[];
+
+            // Deduping isn't strictly needed if we just show ranked, 
+            // but if we want mixed, we need to be careful.
+            // For now: Just show the Semantic Results if decent score?
+            // Simpler: Just render the ranked list (it contains the top matches).
+            // If rankTabs returns ALL tabs sorted, we just use that.
+            // If it returns subset, we might want to fallback.
+            // Assumption: rankTabs returns sorted IDs of RELEVANT tabs.
+
+            renderList(rankedTabs);
+          }
+        } catch (err) {
+          console.error("Tab Wind: Semantic search error", err);
+        } finally {
+          aiIndicator.style.color = '#10b981'; // Green when done
+          aiIndicator.textContent = '✨ AI Results';
+          setTimeout(() => {
+            aiIndicator.textContent = '✨ AI Ready';
+            aiIndicator.style.color = '#666';
+          }, 2000);
+        }
+      }, 300); // 300ms debounce
+    }
+  }
+
+  function renderResults() {
+    handleSearch();
+  }
+
+  function renderList(tabs: TabData[]) {
+    // Dedup and limit
+    // const unique = Array.from(new Set(tabs)); // Tabs are objects, ref check ok?
+    const top10 = tabs.slice(0, 10);
 
     resultsList.innerHTML = '';
 
+    // ... rest of render logic ...
     if (top10.length === 0) {
       const li = document.createElement('li');
       li.style.padding = '16px';

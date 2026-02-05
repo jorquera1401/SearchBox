@@ -3,7 +3,7 @@
 // Helper to check for restricted URLs
 function isRestrictedUrl(url: string | undefined): boolean {
     if (!url) return true;
-    return url.startsWith("chrome://") || url.startsWith("edge://") || url.startsWith("about:");
+    return url.startsWith("chrome://") || url.startsWith("edge://") || url.startsWith("about:") || url.includes("chrome.google.com/webstore");
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -22,7 +22,14 @@ chrome.runtime.onInstalled.addListener(() => {
                 chrome.scripting.executeScript({
                     target: { tabId: tab.id },
                     files: [contentScriptJs]
-                }).catch(err => console.log("Failed to inject content script into tab", tab.id, err));
+                }).catch(err => {
+                    // Ignore expected permission errors on restricted pages
+                    const msg = err.message || "";
+                    if (!msg.includes("Extension manifest must request permission") &&
+                        !msg.includes("The extensions gallery cannot be scripted")) {
+                        console.warn("Failed to inject content script into tab", tab.id, err);
+                    }
+                });
             }
         });
     });
@@ -101,7 +108,13 @@ function performOpen(tabId: number, url: string | undefined, tabs: chrome.tabs.T
                         setTimeout(() => {
                             sendMessage().catch(err => console.error("Final message attempt failed:", err));
                         }, 100);
-                    }).catch(err => console.error("Script injection failed:", err));
+                    }).catch(err => {
+                        const msg = err.message || "";
+                        if (!msg.includes("Extension manifest must request permission") &&
+                            !msg.includes("The extensions gallery cannot be scripted")) {
+                            console.error("Script injection failed:", err);
+                        }
+                    });
                 } else {
                     console.error("Could not determine content script path from manifest.");
                 }

@@ -7,6 +7,11 @@ interface Window {
             create(options?: any): Promise<any>;
             capabilities(): Promise<any>;
         };
+        // Experimental Embedding API
+        embedding?: {
+            create(options?: any): Promise<any>;
+            capabilities(): Promise<any>;
+        }
     };
     model?: any; // Fallback for some experimental builds
 }

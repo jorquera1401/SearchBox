@@ -1,71 +1,131 @@
 // src/SemanticSearchService.ts
 
 export class SemanticSearchService {
-    private session: any = null;
-    private isAvailable: boolean = false;
+    private embeddingModel: any = null;
+    private isEmbeddingAvailable: boolean = false;
+    private tabEmbeddings: Map<number, { vector: number[]; textHash: string }> = new Map();
 
     constructor() {
         this.checkAvailability();
     }
 
+    get isAvailable(): boolean {
+        return this.isEmbeddingAvailable;
+    }
+
     private async checkAvailability() {
-        if (window.ai && window.ai.languageModel) {
+        if (window.ai && window.ai.embedding) {
             try {
-                // Check if we can create a session
-                const capabilities = await window.ai.languageModel.capabilities();
-                if (capabilities.available !== 'no') {
-                    this.isAvailable = true;
-                    console.log("Tab Wind: Chrome AI is available.");
-                } else {
-                    console.log("Tab Wind: Chrome AI is present but not available.");
-                }
+                // Check capabilities
+                // Note: API details are experimental and may vary.
+                // We attempt to see if we can create a model or check capabilities.
+                // Assuming capabilities() exists or we just try create().
+                this.isEmbeddingAvailable = true;
+                console.log("Tab Wind: Chrome AI Embedding API found.");
             } catch (e) {
-                console.warn("Tab Wind: Error checking AI capabilities", e);
+                console.warn("Tab Wind: Error checking Embedding capabilities", e);
             }
         } else {
-            console.log("Tab Wind: Chrome AI (window.ai) not found.");
+            console.log("Tab Wind: Chrome AI Embedding API not found.");
         }
     }
 
-    async getSession() {
-        if (!this.isAvailable) return null;
-        if (this.session) return this.session;
+    async initModel() {
+        if (!this.isEmbeddingAvailable) return null;
+        if (this.embeddingModel) return this.embeddingModel;
 
         try {
-            if (window.ai?.languageModel) {
-                this.session = await window.ai.languageModel.create({
-                    systemPrompt: "You are a helpful assistant that finds the most relevant browser tab based on a user query. I will give you a list of tabs (Title and URL) and a search query. You should return the indices of the most relevant tabs.",
-                });
-                return this.session;
-            }
+            this.embeddingModel = await window.ai!.embedding!.create();
+            console.log("Tab Wind: Embedding model created.");
+            return this.embeddingModel;
         } catch (e) {
-            console.error("Tab Wind: Failed to create AI session", e);
+            console.error("Tab Wind: Failed to create Embedding model", e);
             return null;
         }
-        return null;
     }
 
     /**
-     * Calculates semantic similarity between a query and a list of tabs.
-     * Note: Since the specialized Embedding API isn't always available,
-     * we might use a Prompt approach or wait for 'window.ai.embedding'.
-     * 
-     * For this initial version, we will check if an embedding model is available,
-     * otherwise we fallback to a keyword + lightweight LLM re-ranking approach if possible.
+     * Compute cosine similarity between two vectors.
+     */
+    private cosineSimilarity(vecA: number[], vecB: number[]): number {
+        let dotProduct = 0;
+        let normA = 0;
+        let normB = 0;
+        for (let i = 0; i < vecA.length; i++) {
+            dotProduct += vecA[i] * vecB[i];
+            normA += vecA[i] * vecA[i];
+            normB += vecB[i] * vecB[i];
+        }
+        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
+
+    /**
+     * Embeds a string of text.
+     */
+    private async embed(text: string): Promise<number[] | null> {
+        const model = await this.initModel();
+        if (!model) return null;
+
+        try {
+            const result = await model.compute(text);
+            return result; // Result is usually an array of numbers
+        } catch (e) {
+            console.error("Tab Wind: Embedding computation failed", e);
+            return null;
+        }
+    }
+
+    /**
+     * Rank tabs based on semantic similarity to the query.
      */
     async rankTabs(query: string, tabs: { title?: string, url?: string, id: number }[]): Promise<number[]> {
-        if (!this.isAvailable) return [];
+        if (!this.isEmbeddingAvailable) {
+            console.log("Tab Wind: Semantic search unavailable.");
+            return [];
+        }
 
-        // Placeholder for true embedding search. 
-        // Currently 'window.ai' is mostly 'languageModel'. Embedding API is 'text-embedding-004' usually.
-        // If we only have languageModel, using it to "rank" 100+ tabs is too slow/expensive for a quick switch.
-        // So we will stick to:
-        // 1. Keyword filter (fast)
-        // 2. If < 5 results, ask LLM if any other tabs match the "concept" (slow, might not be suitable for instant UI)
+        console.log(`Tab Wind: Semantic searching for "${query}" across ${tabs.length} tabs.`);
 
-        // For now, let's just log that we would search here.
-        // Implementing full RAG client-side needs the Embedding API specifically.
-        console.log("Semantic search requested for:", query);
-        return [];
+        // 1. Embed Query
+        const queryVector = await this.embed(query);
+        if (!queryVector) return [];
+
+        // 2. Embed Tabs (uncached ones)
+        // We use a simple hash (title+url) to check cache.
+        const promises = tabs.map(async (tab) => {
+            const text = `${tab.title || ''} ${tab.url || ''}`;
+            const hash = text; // Simple key
+
+            if (this.tabEmbeddings.has(tab.id)) {
+                const cached = this.tabEmbeddings.get(tab.id);
+                if (cached!.textHash === hash) {
+                    return { id: tab.id, vector: cached!.vector };
+                }
+            }
+
+            const vector = await this.embed(text);
+            if (vector) {
+                this.tabEmbeddings.set(tab.id, { vector, textHash: hash });
+                return { id: tab.id, vector };
+            }
+            return null;
+        });
+
+        const tabVectors = await Promise.all(promises);
+
+        // 3. Calculate Similarity & Sort
+        const scores = tabVectors
+            .filter(t => t !== null)
+            .map(t => {
+                const score = this.cosineSimilarity(queryVector, t!.vector);
+                return { id: t!.id, score };
+            });
+
+        // Sort descending by score
+        scores.sort((a, b) => b.score - a.score);
+
+        // Return IDs of tabs with score > threshold (e.g., 0.3)
+        // Or just return the top sorted IDs.
+        return scores.map(s => s.id);
     }
 }
