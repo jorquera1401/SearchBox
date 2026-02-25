@@ -1,52 +1,117 @@
 // src/SemanticSearchService.ts
 
-export class SemanticSearchService {
-    private embeddingModel: any = null;
-    private isEmbeddingAvailable: boolean = false;
-    private tabEmbeddings: Map<number, { vector: number[]; textHash: string }> = new Map();
+import { logger } from './utils/logger';
 
-    constructor() {
-        this.checkAvailability();
+export class SemanticSearchService {
+    private isEmbeddingAvailable: boolean = false;
+    private bridgeInitialized: boolean = false;
+    private pendingRequests: Map<string, (result: any) => void> = new Map();
+
+    private onAvailabilityChange?: (available: boolean) => void;
+
+    constructor(onAvailabilityChange?: (available: boolean) => void) {
+        this.onAvailabilityChange = onAvailabilityChange;
+        this.initBridge();
     }
 
     get isAvailable(): boolean {
         return this.isEmbeddingAvailable;
     }
 
-    private async checkAvailability() {
-        if (window.ai && window.ai.embedding) {
-            try {
-                // Check capabilities
-                // Note: API details are experimental and may vary.
-                // We attempt to see if we can create a model or check capabilities.
-                // Assuming capabilities() exists or we just try create().
-                this.isEmbeddingAvailable = true;
-                console.log("Tab Wind: Chrome AI Embedding API found.");
-            } catch (e) {
-                console.warn("Tab Wind: Error checking Embedding capabilities", e);
+    private initBridge() {
+        if (this.bridgeInitialized) return;
+
+        // 1. Listen for messages from the Main World
+        window.addEventListener("message", (event) => {
+            if (event.source !== window) return;
+
+            const data = event.data;
+            if (data?.type === "TAB_WIND_AI_RESPONSE") {
+                if (data.status === "READY") {
+                    this.isEmbeddingAvailable = data.available;
+                    logger.log("Tab Wind: AI Bridge Ready. Available:", this.isEmbeddingAvailable);
+                    if (this.onAvailabilityChange) {
+                        this.onAvailabilityChange(this.isEmbeddingAvailable);
+                    }
+                } else if (data.requestId && this.pendingRequests.has(data.requestId)) {
+                    const resolve = this.pendingRequests.get(data.requestId);
+                    resolve && resolve(data.result);
+                    this.pendingRequests.delete(data.requestId);
+                }
             }
-        } else {
-            console.log("Tab Wind: Chrome AI Embedding API not found.");
-        }
-    }
+        });
 
-    async initModel() {
-        if (!this.isEmbeddingAvailable) return null;
-        if (this.embeddingModel) return this.embeddingModel;
-
+        // 2. Inject the script into Main World
+        // 2. Inject the script into Main World via valid URL
         try {
-            this.embeddingModel = await window.ai!.embedding!.create();
-            console.log("Tab Wind: Embedding model created.");
-            return this.embeddingModel;
+            const script = document.createElement('script');
+            script.src = chrome.runtime.getURL('ai-bridge.js');
+            script.onload = () => script.remove();
+            (document.head || document.documentElement).appendChild(script);
+            this.bridgeInitialized = true;
+            logger.log("Tab Wind: Bridge script injected via src", script.src);
+
         } catch (e) {
-            console.error("Tab Wind: Failed to create Embedding model", e);
-            return null;
+            console.error("Tab Wind: Failed to inject bridge script", e);
         }
     }
 
     /**
-     * Compute cosine similarity between two vectors.
+     * Rank tabs based on semantic similarity to the query.
      */
+    async rankTabs(query: string, tabs: { title?: string, url?: string, id: number }[]): Promise<number[]> {
+        if (!this.isEmbeddingAvailable) return [];
+
+        logger.log(`Tab Wind: Semantic searching for "${query}"...`);
+
+        // Helper to request embedding via bridge
+        const getEmbedding = (text: string): Promise<number[] | null> => {
+            return new Promise((resolve) => {
+                const requestId = Math.random().toString(36).substring(7);
+                this.pendingRequests.set(requestId, resolve);
+                window.postMessage({
+                    type: "TAB_WIND_AI_REQUEST",
+                    action: "embed",
+                    text,
+                    requestId
+                }, "*");
+
+                // Timeout fallback
+                setTimeout(() => {
+                    if (this.pendingRequests.has(requestId)) {
+                        this.pendingRequests.delete(requestId);
+                        resolve(null);
+                    }
+                }, 2000);
+            });
+        };
+
+        // 1. Embed Query
+        const queryVector = await getEmbedding(query);
+        if (!queryVector) return [];
+
+        // 2. Embed Tabs
+        const promises = tabs.slice(0, 50).map(async (tab) => {
+            const text = `${tab.title || ''} ${tab.url || ''}`;
+            const vector = await getEmbedding(text);
+            if (vector) return { id: tab.id, vector };
+            return null;
+        });
+
+        const tabVectors = await Promise.all(promises);
+
+        // 3. Cosine Similarity
+        const scores = tabVectors
+            .filter(t => t !== null)
+            .map(t => {
+                const score = this.cosineSimilarity(queryVector, t!.vector);
+                return { id: t!.id, score };
+            });
+
+        scores.sort((a, b) => b.score - a.score);
+        return scores.map(s => s.id);
+    }
+
     private cosineSimilarity(vecA: number[], vecB: number[]): number {
         let dotProduct = 0;
         let normA = 0;
@@ -57,75 +122,5 @@ export class SemanticSearchService {
             normB += vecB[i] * vecB[i];
         }
         return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-    }
-
-    /**
-     * Embeds a string of text.
-     */
-    private async embed(text: string): Promise<number[] | null> {
-        const model = await this.initModel();
-        if (!model) return null;
-
-        try {
-            const result = await model.compute(text);
-            return result; // Result is usually an array of numbers
-        } catch (e) {
-            console.error("Tab Wind: Embedding computation failed", e);
-            return null;
-        }
-    }
-
-    /**
-     * Rank tabs based on semantic similarity to the query.
-     */
-    async rankTabs(query: string, tabs: { title?: string, url?: string, id: number }[]): Promise<number[]> {
-        if (!this.isEmbeddingAvailable) {
-            console.log("Tab Wind: Semantic search unavailable.");
-            return [];
-        }
-
-        console.log(`Tab Wind: Semantic searching for "${query}" across ${tabs.length} tabs.`);
-
-        // 1. Embed Query
-        const queryVector = await this.embed(query);
-        if (!queryVector) return [];
-
-        // 2. Embed Tabs (uncached ones)
-        // We use a simple hash (title+url) to check cache.
-        const promises = tabs.map(async (tab) => {
-            const text = `${tab.title || ''} ${tab.url || ''}`;
-            const hash = text; // Simple key
-
-            if (this.tabEmbeddings.has(tab.id)) {
-                const cached = this.tabEmbeddings.get(tab.id);
-                if (cached!.textHash === hash) {
-                    return { id: tab.id, vector: cached!.vector };
-                }
-            }
-
-            const vector = await this.embed(text);
-            if (vector) {
-                this.tabEmbeddings.set(tab.id, { vector, textHash: hash });
-                return { id: tab.id, vector };
-            }
-            return null;
-        });
-
-        const tabVectors = await Promise.all(promises);
-
-        // 3. Calculate Similarity & Sort
-        const scores = tabVectors
-            .filter(t => t !== null)
-            .map(t => {
-                const score = this.cosineSimilarity(queryVector, t!.vector);
-                return { id: t!.id, score };
-            });
-
-        // Sort descending by score
-        scores.sort((a, b) => b.score - a.score);
-
-        // Return IDs of tabs with score > threshold (e.g., 0.3)
-        // Or just return the top sorted IDs.
-        return scores.map(s => s.id);
     }
 }

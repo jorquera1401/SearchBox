@@ -1,3 +1,5 @@
+import { logger } from './utils/logger';
+
 // src/background.ts
 
 // Helper to check for restricted URLs
@@ -6,8 +8,14 @@ function isRestrictedUrl(url: string | undefined): boolean {
     return url.startsWith("chrome://") || url.startsWith("edge://") || url.startsWith("about:") || url.includes("chrome.google.com/webstore");
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-    console.log("Extension installed/updated. Injecting content scripts...");
+chrome.runtime.onInstalled.addListener((details) => {
+    logger.log("Extension installed/updated. Reason:", details.reason);
+
+    if (details.reason === "install") {
+        chrome.tabs.create({ url: "welcome.html" });
+    }
+
+    logger.log("Injecting content scripts...");
     const manifest = chrome.runtime.getManifest();
     const contentScriptJs = manifest.content_scripts?.[0]?.js?.[0];
 
@@ -36,14 +44,18 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.commands.onCommand.addListener((command) => {
-    console.log("Command received:", command);
+    logger.log(`Tab Wind: Command received: "${command}"`);
+
     if (command === "toggle-search") {
         openModalInActiveTab();
+    } else {
+        logger.log(`Tab Wind: Unknown command: "${command}"`);
     }
 });
 
 chrome.action.onClicked.addListener((tab) => {
-    console.log("Action clicked", tab);
+    logger.log("Action clicked", tab);
+
     if (tab.id) {
         openModalInTab(tab.id, tab.url);
     } else {
@@ -89,7 +101,8 @@ function performOpen(tabId: number, url: string | undefined, tabs: chrome.tabs.T
 
     sendMessage()
         .then(() => {
-            console.log("Message sent successfully to tab", tabId);
+            logger.log("Tab Wind: Message sent successfully to tab", tabId);
+
         })
         .catch((error) => {
             console.warn("Message failed. Attempting injection...", error);
@@ -104,7 +117,7 @@ function performOpen(tabId: number, url: string | undefined, tabs: chrome.tabs.T
                         target: { tabId: tabId },
                         files: [contentScriptJs]
                     }).then(() => {
-                        console.log("Content script injected. Retrying message...");
+
                         setTimeout(() => {
                             sendMessage().catch(err => console.error("Final message attempt failed:", err));
                         }, 100);
@@ -133,6 +146,8 @@ interface SwitchTabMessage {
 }
 
 chrome.runtime.onMessage.addListener((request: any, sender, sendResponse) => {
+    logger.log("Tab Wind: Background received message from", sender.tab?.id, request);
+
     if (request.action === "switch-tab") {
         const message = request as SwitchTabMessage;
         const tabId = message.tabId;
@@ -141,5 +156,7 @@ chrome.runtime.onMessage.addListener((request: any, sender, sendResponse) => {
         chrome.windows.update(windowId, { focused: true }, () => {
             chrome.tabs.update(tabId, { active: true });
         });
+        sendResponse({ status: "ok" });
     }
+    return true;
 });

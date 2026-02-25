@@ -94,3 +94,10 @@ dist/
 # Brain/Artifacts (Optional, depending on if you want to track them)
 .gemini/
 .agent/
+
+# Chrome Extension build artifacts
+dist.zip
+
+# Chrome Web Store marketing/promotional assets (large binaries, not needed in source)
+public/store-assets/
+public/icons/store-promo-*.png

@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
     "name": "Tab Wind Command",
-    "version": "1.0",
-    "description": "Fast tab search and switching command palette.",
+    "version": "1.0.0",
+    "description": "Fast tab search and AI-powered switching command palette.",
     "permissions": [
         "tabs",
         "scripting"
@@ -15,13 +15,13 @@
     },
     "action": {
         "default_title": "Search Tabs",
-        "default_icon": "icons/icon.svg"
+        "default_icon": "icons/icon.png"
     },
     "icons": {
-        "16": "icons/icon.svg",
-        "32": "icons/icon.svg",
-        "48": "icons/icon.svg",
-        "128": "icons/icon.svg"
+        "16": "icons/icon.png",
+        "32": "icons/icon.png",
+        "48": "icons/icon.png",
+        "128": "icons/icon.png"
     },
     "content_scripts": [
         {
@@ -33,11 +33,21 @@
             ]
         }
     ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "ai-bridge.js"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ],
     "commands": {
         "toggle-search": {
             "suggested_key": {
-                "default": "Ctrl+Shift+O",
-                "mac": "Command+Shift+O"
+                "default": "Ctrl+Shift+L",
+                "mac": "Command+Shift+L"
             },
             "description": "Toggle Tab Search"
         }

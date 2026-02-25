@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to Tab Wind</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+        }
+
+        .container {
+            max-width: 600px;
+            padding: 40px;
+            background: #1e1e1e;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border: 1px solid #333;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #3b82f6, #10b981);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p {
+            font-size: 1.2rem;
+            color: #ccc;
+            line-height: 1.6;
+        }
+
+        .shortcut {
+            display: inline-block;
+            background: #2d2d2d;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 1.4rem;
+            color: #3b82f6;
+            margin: 20px 0;
+            border: 1px solid #444;
+        }
+
+        .note {
+            font-size: 0.9rem;
+            color: #888;
+            margin-top: 30px;
+        }
+
+        .footer {
+            margin-top: 40px;
+            font-size: 0.8rem;
+            color: #555;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>✨ Tab Wind Ready</h1>
+        <p>Your AI-powered tab search is now installed.</p>
+
+        <p>To start searching, use the shortcut:</p>
+        <div class="shortcut" id="shortcut-display">Cmd + Shift + L</div>
+
+        <p>Or simply click the extension icon in your toolbar.</p>
+
+        <div class="note">
+            Tip: If the shortcut doesn't work, ensure it's not being used by another extension in
+            <br><code>chrome://extensions/shortcuts</code>
+        </div>
+
+        <div class="footer">
+            Tab Wind Command &bull; Fast & Semantic Tab Search
+        </div>
+    </div>
+
+    <script>
+        // Detection for Mac vs others
+        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+        if (!isMac) {
+            document.getElementById('shortcut-display').textContent = 'Ctrl + Shift + L';
+        }
+    </script>
+</body>
+
+</html>

@@ -1,13 +1,22 @@
 import { SemanticSearchService } from './SemanticSearchService';
+import { logger } from './utils/logger';
 import './styles.css';
+import contentStyles from './content.css?inline';
+import contentHtml from './content.html?raw';
 
 // Prevent double injection in the SAME context
 if (window.hasTabWindRun) {
-  console.log("Tab Wind: Already running in this context.");
+
 } else {
   try {
+    console.log("Tab Wind: Content script starting...");
     window.hasTabWindRun = true;
-    initContentScript();
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initContentScript);
+    } else {
+      initContentScript();
+    }
   } catch (e) {
     console.error("Tab Wind: Critical error starting content script", e);
   }
@@ -17,15 +26,14 @@ function initContentScript() {
   // Check for stale DOM from PREVIOUS context (extension reload case)
   const existingHost = document.getElementById('tab-wind-search-host');
   if (existingHost) {
-    console.log("Tab Wind: Removing stale Search host from DOM.");
+    logger.log("Tab Wind: Removing stale Search host from DOM.");
     existingHost.remove();
   }
 
-  console.log("Tab Wind: Initializing content script...");
+  logger.log("Tab Wind: Initializing content script...");
 
-  // Initialize Semantic Service
-  const semanticService = new SemanticSearchService();
-  console.log("Tab Wind: AI Service initialized", semanticService);
+  // Semantic Service initialized later to bind with UI
+  let semanticService: SemanticSearchService;
 
   // --- Create Host & Shadow DOM ---
   const host = document.createElement('div');
@@ -41,141 +49,16 @@ function initContentScript() {
 
   // --- Inject Styles ---
   const style = document.createElement('style');
-  style.textContent = `
-    :host {
-      all: initial; /* Reset all inherited properties */
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
-    
-    #overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(0, 0, 0, 0.5);
-      display: flex;
-      justify-content: center;
-      align-items: flex-start;
-      padding-top: 100px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.1s ease-in-out;
-      box-sizing: border-box;
-    }
-
-    #overlay.visible {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    #modal {
-      background: #1e1e1e;
-      width: 600px;
-      max-width: 90%;
-      border-radius: 12px;
-      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      border: 1px solid #333;
-      color: #fff;
-    }
-
-    input {
-      width: 100%;
-      padding: 16px;
-      font-size: 18px;
-      background: transparent;
-      border: none;
-      border-bottom: 1px solid #333;
-      color: #fff;
-      outline: none;
-      box-sizing: border-box;
-    }
-
-    ul {
-      max-height: 400px;
-      overflow-y: auto;
-      padding: 8px 0;
-      margin: 0;
-      list-style: none;
-    }
-
-    li {
-      padding: 10px 16px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      cursor: pointer;
-      color: #ccc;
-      border-left: 2px solid transparent;
-      box-sizing: border-box;
-    }
-
-    li.selected {
-      background: #2d2d2d;
-      color: #fff;
-      border-left-color: #3b82f6;
-    }
-
-    li:hover {
-      background: #252525;
-    }
-
-    .favicon {
-      width: 16px;
-      height: 16px;
-      border-radius: 2px;
-      flex-shrink: 0;
-    }
-
-    .info {
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      min-width: 0;
-    }
-
-    .title {
-      font-size: 14px;
-      font-weight: 500;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .url {
-      font-size: 12px;
-      color: #888;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    
-    ul::-webkit-scrollbar {
-      width: 8px;
-    }
-    ul::-webkit-scrollbar-track {
-      background: #1e1e1e;
-    }
-    ul::-webkit-scrollbar-thumb {
-      background: #333;
-      border-radius: 4px;
-    }
-  `;
+  style.textContent = contentStyles;
   shadow.appendChild(style);
 
   // --- Inject HTML ---
-  const overlay = document.createElement('div');
-  overlay.id = 'overlay';
-  overlay.innerHTML = `
-    <div id="modal">
-      <input type="text" id="params-input" placeholder="Search tabs..." autocomplete="off">
-      <ul id="results"></ul>
-    </div>
-  `;
-  shadow.appendChild(overlay);
+  const template = document.createElement('template');
+  template.innerHTML = contentHtml;
+  shadow.appendChild(template.content.cloneNode(true));
+
+  const overlay = shadow.getElementById('overlay') as HTMLDivElement;
+  const aiIndicator = shadow.getElementById('ai-indicator') as HTMLDivElement;
 
   // --- Element References ---
   const input = shadow.getElementById('params-input') as HTMLInputElement;
@@ -194,7 +77,7 @@ function initContentScript() {
 
   // --- Event Listeners ---
   chrome.runtime.onMessage.addListener((request: any, sender, sendResponse) => {
-    console.log("Tab Wind: Message received", request);
+    console.log("Tab Wind: Message received in content script:", request);
     if (request.action === "toggle-modal") {
       if (overlay.classList.contains('visible')) {
         closeModal();
@@ -204,6 +87,7 @@ function initContentScript() {
       }
       sendResponse({ status: "ok" });
     }
+    return true; // Keep channel open for async if needed
   });
 
   overlay.addEventListener('click', (e) => {
@@ -243,7 +127,7 @@ function initContentScript() {
 
   // --- Functions ---
   function openModal() {
-    console.log("Tab Wind: Opening modal...");
+    logger.log("Tab Wind: Opening modal...");
     overlay.classList.add('visible');
     host.style.pointerEvents = 'auto';
     input.value = '';
@@ -255,7 +139,7 @@ function initContentScript() {
     });
     setTimeout(() => {
       input.focus();
-      console.log("Tab Wind: Input focused (timeout)");
+      // console.log("Tab Wind: Input focused (timeout)");
     }, 100);
   }
 
@@ -265,11 +149,18 @@ function initContentScript() {
   }
 
   // --- UI Updates for AI ---
-  const aiIndicator = document.createElement('div');
-  aiIndicator.id = 'ai-indicator';
-  aiIndicator.style.cssText = 'position: absolute; right: 20px; top: 20px; font-size: 12px; color: #666; display: none;';
-  aiIndicator.textContent = '✨ AI Ready';
-  shadow.getElementById('modal')?.appendChild(aiIndicator);
+  // The aiIndicator is now part of the HTML template and referenced above.
+
+  // Initialize Semantic Service with UI Callback
+  semanticService = new SemanticSearchService((available) => {
+    logger.log("Tab Wind: AI Availability Changed:", available);
+    if (available) {
+      aiIndicator.style.display = 'block';
+    } else {
+      aiIndicator.style.display = 'none';
+    }
+  });
+  logger.log("Tab Wind: AI Service initialized", semanticService);
 
   if (semanticService.isAvailable) {
     aiIndicator.style.display = 'block';
