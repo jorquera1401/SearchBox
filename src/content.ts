@@ -59,6 +59,12 @@ function initContentScript() {
 
   const overlay = shadow.getElementById('overlay') as HTMLDivElement;
   const aiIndicator = shadow.getElementById('ai-indicator') as HTMLDivElement;
+  const aiLabel = shadow.getElementById('ai-label') as HTMLSpanElement;
+  const aiToggle = shadow.getElementById('ai-toggle') as HTMLInputElement;
+
+  // Persist AI toggle state across sessions
+  let aiEnabled = localStorage.getItem('tabwind-ai-enabled') !== 'false';
+  aiToggle.checked = aiEnabled;
 
   // --- Element References ---
   const input = shadow.getElementById('params-input') as HTMLInputElement;
@@ -155,7 +161,7 @@ function initContentScript() {
   semanticService = new SemanticSearchService((available) => {
     logger.log("Tab Wind: AI Availability Changed:", available);
     if (available) {
-      aiIndicator.style.display = 'block';
+      aiIndicator.style.display = 'flex';
     } else {
       aiIndicator.style.display = 'none';
     }
@@ -163,8 +169,21 @@ function initContentScript() {
   logger.log("Tab Wind: AI Service initialized", semanticService);
 
   if (semanticService.isAvailable) {
-    aiIndicator.style.display = 'block';
+    aiIndicator.style.display = 'flex';
   }
+
+  aiToggle.addEventListener('change', () => {
+    aiEnabled = aiToggle.checked;
+    localStorage.setItem('tabwind-ai-enabled', String(aiEnabled));
+    if (!aiEnabled) {
+      clearTimeout(debounceTimer);
+      aiLabel.textContent = '✨ AI Off';
+      aiLabel.style.color = '#555';
+    } else {
+      aiLabel.textContent = '✨ AI Ready';
+      aiLabel.style.color = '#666';
+    }
+  });
 
   let debounceTimer: any;
 
@@ -180,8 +199,8 @@ function initContentScript() {
 
     renderList(keywordResults);
 
-    // 2. Trigger Semantic Search (Debounced)
-    if (semanticService.isAvailable && query.length > 2) {
+    // 2. Trigger Semantic Search (Debounced) — only if AI is enabled
+    if (semanticService.isAvailable && aiEnabled && query.length > 2) {
       clearTimeout(debounceTimer);
       aiIndicator.style.color = '#3b82f6'; // Blue when "thinking"
       aiIndicator.textContent = '✨ AI Thinking...';

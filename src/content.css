@@ -126,9 +126,51 @@ ul::-webkit-scrollbar-thumb {
 
 #ai-indicator {
     position: absolute;
-    right: 20px;
-    top: 20px;
+    right: 12px;
+    top: 14px;
     font-size: 12px;
     color: #666;
     display: none;
+    align-items: center;
+    gap: 8px;
+}
+
+#ai-toggle-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+#ai-toggle {
+    display: none;
+}
+
+.toggle-track {
+    display: inline-block;
+    width: 28px;
+    height: 16px;
+    background: #444;
+    border-radius: 8px;
+    position: relative;
+    transition: background 0.2s;
+}
+
+.toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    background: #888;
+    border-radius: 50%;
+    transition: left 0.2s, background 0.2s;
+}
+
+#ai-toggle:checked + .toggle-track {
+    background: #1d4ed8;
+}
+
+#ai-toggle:checked + .toggle-track .toggle-thumb {
+    left: 14px;
+    background: #fff;
 }

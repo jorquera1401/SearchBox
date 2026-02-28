@@ -1,7 +1,13 @@
 <div id="overlay">
   <div id="modal">
     <input type="text" id="params-input" placeholder="Search tabs..." autocomplete="off">
-    <div id="ai-indicator">✨ AI Ready</div>
+    <div id="ai-indicator">
+      <span id="ai-label">✨ AI Ready</span>
+      <label id="ai-toggle-label" title="Toggle AI semantic search">
+        <input type="checkbox" id="ai-toggle">
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+    </div>
     <ul id="results"></ul>
   </div>
 </div>
