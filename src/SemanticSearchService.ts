@@ -21,7 +21,7 @@ export class SemanticSearchService {
     private initBridge() {
         if (this.bridgeInitialized) return;
 
-        // 1. Listen for messages from the Main World
+        // Listen for messages from the Main World bridge
         window.addEventListener("message", (event) => {
             if (event.source !== window) return;
 
@@ -41,8 +41,7 @@ export class SemanticSearchService {
             }
         });
 
-        // 2. Inject the script into Main World
-        // 2. Inject the script into Main World via valid URL
+        // Inject the bridge script into Main World via valid extension URL
         try {
             const script = document.createElement('script');
             script.src = chrome.runtime.getURL('ai-bridge.js');
@@ -50,77 +49,43 @@ export class SemanticSearchService {
             (document.head || document.documentElement).appendChild(script);
             this.bridgeInitialized = true;
             logger.log("Tab Wind: Bridge script injected via src", script.src);
-
         } catch (e) {
             console.error("Tab Wind: Failed to inject bridge script", e);
         }
     }
 
     /**
-     * Rank tabs based on semantic similarity to the query.
+     * Rank tabs by relevance to the query using the on-device LanguageModel.
+     * Returns an array of tab IDs sorted from most to least relevant.
      */
     async rankTabs(query: string, tabs: { title?: string, url?: string, id: number }[]): Promise<number[]> {
         if (!this.isEmbeddingAvailable) return [];
 
-        logger.log(`Tab Wind: Semantic searching for "${query}"...`);
+        logger.log(`Tab Wind: Semantic ranking for "${query}"...`);
 
-        // Helper to request embedding via bridge
-        const getEmbedding = (text: string): Promise<number[] | null> => {
-            return new Promise((resolve) => {
-                const requestId = Math.random().toString(36).substring(7);
-                this.pendingRequests.set(requestId, resolve);
-                window.postMessage({
-                    type: "TAB_WIND_AI_REQUEST",
-                    action: "embed",
-                    text,
-                    requestId
-                }, "*");
+        return new Promise((resolve) => {
+            const requestId = Math.random().toString(36).substring(7);
 
-                // Timeout fallback
-                setTimeout(() => {
-                    if (this.pendingRequests.has(requestId)) {
-                        this.pendingRequests.delete(requestId);
-                        resolve(null);
-                    }
-                }, 2000);
+            this.pendingRequests.set(requestId, (result) => {
+                resolve(Array.isArray(result) ? result : []);
             });
-        };
 
-        // 1. Embed Query
-        const queryVector = await getEmbedding(query);
-        if (!queryVector) return [];
+            window.postMessage({
+                type: "TAB_WIND_AI_REQUEST",
+                action: "rank",
+                query,
+                tabs: tabs.slice(0, 25).map(t => ({ id: t.id, title: t.title, url: t.url })),
+                requestId
+            }, "*");
 
-        // 2. Embed Tabs
-        const promises = tabs.slice(0, 50).map(async (tab) => {
-            const text = `${tab.title || ''} ${tab.url || ''}`;
-            const vector = await getEmbedding(text);
-            if (vector) return { id: tab.id, vector };
-            return null;
+            // LLM is slower than embedding — use a generous timeout
+            setTimeout(() => {
+                if (this.pendingRequests.has(requestId)) {
+                    logger.log("Tab Wind: Semantic rank timed out");
+                    this.pendingRequests.delete(requestId);
+                    resolve([]);
+                }
+            }, 15000);
         });
-
-        const tabVectors = await Promise.all(promises);
-
-        // 3. Cosine Similarity
-        const scores = tabVectors
-            .filter(t => t !== null)
-            .map(t => {
-                const score = this.cosineSimilarity(queryVector, t!.vector);
-                return { id: t!.id, score };
-            });
-
-        scores.sort((a, b) => b.score - a.score);
-        return scores.map(s => s.id);
-    }
-
-    private cosineSimilarity(vecA: number[], vecB: number[]): number {
-        let dotProduct = 0;
-        let normA = 0;
-        let normB = 0;
-        for (let i = 0; i < vecA.length; i++) {
-            dotProduct += vecA[i] * vecB[i];
-            normA += vecA[i] * vecA[i];
-            normB += vecB[i] * vecB[i];
-        }
-        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
     }
 }
