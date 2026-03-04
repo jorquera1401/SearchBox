@@ -101,3 +101,6 @@ dist.zip
 # Chrome Web Store marketing/promotional assets (large binaries, not needed in source)
 public/store-assets/
 public/icons/store-promo-*.png
+
+
+/.claude
