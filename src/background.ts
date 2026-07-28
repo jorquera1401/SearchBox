@@ -285,12 +285,15 @@ chrome.runtime.onMessage.addListener((request: any, sender, sendResponse) => {
 
     if (request.action === "semantic-rank") {
         (async () => {
-            const response = await sendToOffscreen<{ ok: boolean; results?: any[] }>({
+            const response = await sendToOffscreen<{ ok: boolean; results?: any[]; threshold?: number }>({
                 type: "RANK",
                 query: request.query,
                 tabs: request.tabs || []
             });
-            sendResponse({ results: response?.ok ? response.results : [] });
+            sendResponse({
+                results: response?.ok ? response.results : [],
+                threshold: response?.threshold
+            });
         })();
         return true;
     }

@@ -12,7 +12,37 @@ import { pipeline, env, type FeatureExtractionPipeline } from '@huggingface/tran
 import { vectorCache, cacheKey, embeddingText, dot } from './utils/vectorCache';
 import { logger } from './utils/logger';
 
-const MODEL_ID = 'Xenova/paraphrase-multilingual-MiniLM-L12-v2';
+// Both models are 384-dim and ~129 MB, so switching is a like-for-like swap.
+// They differ in training objective: e5 is trained for retrieval (a short
+// query against documents), which is what this palette does, while the
+// paraphrase model is trained for sentence-pair similarity. Flip ACTIVE_MODEL
+// to compare them on real tabs -- the vector cache is namespaced per model,
+// so no stale vectors carry over.
+const MODELS = {
+    'e5-small': {
+        id: 'Xenova/multilingual-e5-small',
+        // e5 was trained with these prefixes. Omitting them measurably
+        // degrades results; they are not decorative.
+        queryPrefix: 'query: ',
+        passagePrefix: 'passage: ',
+        // e5 packs its cosine scores into a narrow, high band (relevant ~0.85,
+        // irrelevant ~0.75), so the cutoff lives with the model rather than as
+        // one shared constant -- the paraphrase model's 0.25 would let
+        // everything through here. Starting estimate; tune against the scores
+        // logged in the page console.
+        threshold: 0.8,
+    },
+    'paraphrase': {
+        id: 'Xenova/paraphrase-multilingual-MiniLM-L12-v2',
+        queryPrefix: '',
+        passagePrefix: '',
+        threshold: 0.25,
+    },
+} as const;
+
+const ACTIVE_MODEL: keyof typeof MODELS = 'e5-small';
+const MODEL = MODELS[ACTIVE_MODEL];
+
 const BATCH_SIZE = 32;
 
 // Weights are fetched from the HuggingFace CDN on first use and kept in the
@@ -59,7 +89,7 @@ function getModel(): Promise<FeatureExtractionPipeline> {
     state = 'downloading';
     progress = 0;
 
-    initPromise = pipeline('feature-extraction', MODEL_ID, {
+    initPromise = pipeline('feature-extraction', MODEL.id, {
         dtype: 'q8',
         device: 'wasm',
         progress_callback: (item: any) => {
@@ -129,7 +159,7 @@ interface TabInput {
 
 /** Embeds any tabs missing from the cache. Returns how many were computed. */
 async function embedTabs(tabs: TabInput[]): Promise<number> {
-    await vectorCache.load();
+    await vectorCache.load(MODEL.id);
 
     const missing: { key: string; text: string }[] = [];
     const seen = new Set<string>();
@@ -138,7 +168,10 @@ async function embedTabs(tabs: TabInput[]): Promise<number> {
         const key = cacheKey(tab.title, tab.url);
         if (vectorCache.has(key) || seen.has(key)) continue;
         seen.add(key);
-        missing.push({ key, text: embeddingText(tab.title, tab.url) });
+        missing.push({
+            key,
+            text: MODEL.passagePrefix + embeddingText(tab.title, tab.url),
+        });
     }
 
     if (missing.length === 0) return 0;
@@ -153,7 +186,7 @@ async function embedTabs(tabs: TabInput[]): Promise<number> {
 async function rank(query: string, tabs: TabInput[]): Promise<{ id: number; score: number }[]> {
     await embedTabs(tabs);
 
-    const [queryVec] = await embed([query]);
+    const [queryVec] = await embed([MODEL.queryPrefix + query]);
 
     const scored: { id: number; score: number }[] = [];
     for (const tab of tabs) {
@@ -190,8 +223,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             return true;
 
         case 'RANK':
+            // All scores are returned, unfiltered, so the caller can log them
+            // for tuning; `threshold` travels with them because only the model
+            // knows the scale its scores live on.
             runExclusive(() => rank(message.query, message.tabs || []))
-                .then((results) => sendResponse({ ok: true, results }))
+                .then((results) => sendResponse({ ok: true, results, threshold: MODEL.threshold }))
                 .catch((e) => sendResponse({ ok: false, error: String(e) }));
             return true;
 

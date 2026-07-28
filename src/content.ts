@@ -235,11 +235,6 @@ function initContentScript() {
     updateAiLabel();
   });
 
-  // Cosine similarity below this is treated as noise rather than a match.
-  // Provisional: the useful range depends on the model and on how short tab
-  // titles are, so tune it against the scores logged in handleSearch.
-  const SEMANTIC_THRESHOLD = 0.25;
-
   function handleSearch() {
     const rawQuery = input.value.trim();
     const query = rawQuery.toLowerCase();
@@ -265,13 +260,14 @@ function initContentScript() {
       if (input.value.trim() !== rawQuery) return;
 
       try {
-        const ranked = await semanticService.rankTabs(rawQuery, openTabs);
+        // The cutoff comes from the model: each one scores on its own scale.
+        const { ranked, threshold } = await semanticService.rankTabs(rawQuery, openTabs);
         if (input.value.trim() !== rawQuery) return;
 
         // Scores are logged so the threshold can be tuned against real tabs
         // instead of guessed: the useful cutoff is not obvious a priori.
         logger.log(
-          `Tab Wind: scores for "${rawQuery}" (threshold ${SEMANTIC_THRESHOLD})`,
+          `Tab Wind: scores for "${rawQuery}" (threshold ${threshold})`,
           ranked.slice(0, 10).map(r => {
             const tab = openTabs.find(t => t.id === r.id);
             return `${r.score.toFixed(3)}  ${(tab?.title || '?').slice(0, 60)}`;
@@ -289,7 +285,7 @@ function initContentScript() {
         const rankedTabs: TabData[] = [];
 
         for (const { id, score } of ranked) {
-          if (score < SEMANTIC_THRESHOLD && !keywordIds.has(id)) continue;
+          if (score < threshold && !keywordIds.has(id)) continue;
           const tab = openTabs.find(t => t.id === id);
           if (tab) rankedTabs.push(tab);
         }

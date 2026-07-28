@@ -17,6 +17,13 @@ export interface RankedTab {
     score: number;
 }
 
+export interface RankResult {
+    /** Every tab that could be scored, best first and unfiltered. */
+    ranked: RankedTab[];
+    /** Cutoff below which a score is noise, on this model's scale. */
+    threshold: number;
+}
+
 export interface TabInput {
     id: number;
     title?: string;
@@ -121,9 +128,17 @@ export class SemanticSearchService {
         this.pollTimer = setTimeout(tick, POLL_INTERVAL_MS);
     }
 
-    async rankTabs(query: string, tabs: TabInput[]): Promise<RankedTab[]> {
-        if (this.state === 'fallback') return this.rankViaLanguageModel(query, tabs);
-        if (this.state !== 'ready') return [];
+    /**
+     * Returns every tab scored, unfiltered, plus the cutoff to apply. The
+     * threshold comes from the model rather than the caller because each
+     * model's scores live on a different scale.
+     */
+    async rankTabs(query: string, tabs: TabInput[]): Promise<RankResult> {
+        if (this.state === 'fallback') {
+            // The LLM already filtered for relevance and scores are synthetic.
+            return { ranked: await this.rankViaLanguageModel(query, tabs), threshold: 0 };
+        }
+        if (this.state !== 'ready') return { ranked: [], threshold: 1 };
 
         try {
             const response = await chrome.runtime.sendMessage({
@@ -131,10 +146,13 @@ export class SemanticSearchService {
                 query,
                 tabs: tabs.map((t) => ({ id: t.id, title: t.title, url: t.url }))
             });
-            return Array.isArray(response?.results) ? response.results : [];
+            return {
+                ranked: Array.isArray(response?.results) ? response.results : [],
+                threshold: typeof response?.threshold === 'number' ? response.threshold : 1
+            };
         } catch (e) {
             logger.warn('Tab Wind: Rank request failed', e);
-            return [];
+            return { ranked: [], threshold: 1 };
         }
     }
 
