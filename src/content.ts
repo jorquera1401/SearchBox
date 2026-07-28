@@ -61,10 +61,22 @@ function initContentScript() {
   const aiIndicator = shadow.getElementById('ai-indicator') as HTMLDivElement;
   const aiLabel = shadow.getElementById('ai-label') as HTMLSpanElement;
   const aiToggle = shadow.getElementById('ai-toggle') as HTMLInputElement;
+  const aiProgress = shadow.getElementById('ai-progress') as HTMLDivElement;
+  const aiProgressBar = shadow.getElementById('ai-progress-bar') as HTMLDivElement;
 
-  // Persist AI toggle state across sessions
-  let aiEnabled = localStorage.getItem('tabwind-ai-enabled') !== 'false';
+  // The toggle lives in chrome.storage, not localStorage: a content script's
+  // localStorage belongs to the host page, so the setting would be per-site
+  // and would write into every site the user visits.
+  let aiEnabled = true;
   aiToggle.checked = aiEnabled;
+
+  chrome.runtime.sendMessage({ action: 'ai-enabled-get' })
+    .then((response) => {
+      aiEnabled = response?.enabled !== false;
+      aiToggle.checked = aiEnabled;
+      updateAiLabel();
+    })
+    .catch(() => { /* background asleep; the optimistic default stands */ });
 
   // --- Element References ---
   const input = shadow.getElementById('params-input') as HTMLInputElement;
@@ -82,7 +94,7 @@ function initContentScript() {
   let selectedIndex = 0;
 
   // --- Event Listeners ---
-  chrome.runtime.onMessage.addListener((request: any, sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((request: any, _sender, sendResponse) => {
     console.log("Tab Wind: Message received in content script:", request);
     if (request.action === "toggle-modal") {
       if (overlay.classList.contains('visible')) {
@@ -134,6 +146,11 @@ function initContentScript() {
   // --- Functions ---
   function openModal() {
     logger.log("Tab Wind: Opening modal...");
+
+    // First real signal of intent. Loading the model on script load instead
+    // would fire in every tab and start a large download unprompted.
+    if (aiEnabled) void semanticService.init();
+
     overlay.classList.add('visible');
     host.style.pointerEvents = 'auto';
     input.value = '';
@@ -154,43 +171,82 @@ function initContentScript() {
     host.style.pointerEvents = 'none';
   }
 
-  // --- UI Updates for AI ---
-  // The aiIndicator is now part of the HTML template and referenced above.
-
-  // Initialize Semantic Service with UI Callback
-  semanticService = new SemanticSearchService((available) => {
-    logger.log("Tab Wind: AI Availability Changed:", available);
-    if (available) {
-      aiIndicator.style.display = 'flex';
-    } else {
-      aiIndicator.style.display = 'none';
-    }
-  });
-  logger.log("Tab Wind: AI Service initialized", semanticService);
-
-  if (semanticService.isAvailable) {
-    aiIndicator.style.display = 'flex';
-  }
-
-  aiToggle.addEventListener('change', () => {
-    aiEnabled = aiToggle.checked;
-    localStorage.setItem('tabwind-ai-enabled', String(aiEnabled));
-    if (!aiEnabled) {
-      clearTimeout(debounceTimer);
-      aiLabel.textContent = '✨ AI Off';
-      aiLabel.style.color = '#555';
-    } else {
-      aiLabel.textContent = '✨ AI Ready';
-      aiLabel.style.color = '#666';
-    }
-  });
+  // --- AI status UI ---
 
   let debounceTimer: any;
 
-  function handleSearch() {
-    const query = input.value.toLowerCase();
+  function updateAiLabel(): void {
+    if (!aiEnabled) {
+      aiLabel.textContent = '✨ AI Off';
+      aiLabel.style.color = '#555';
+      return;
+    }
 
-    // 1. Immediate Keyword Search
+    switch (semanticService?.currentState) {
+      case 'downloading':
+        aiLabel.textContent = `✨ Loading model ${semanticService.currentProgress}%`;
+        aiLabel.style.color = '#3b82f6';
+        break;
+      case 'fallback':
+        aiLabel.textContent = '✨ AI Ready (basic)';
+        aiLabel.style.color = '#666';
+        break;
+      case 'ready':
+        aiLabel.textContent = '✨ AI Ready';
+        aiLabel.style.color = '#666';
+        break;
+      default:
+        aiLabel.textContent = '✨ AI starting…';
+        aiLabel.style.color = '#666';
+    }
+  }
+
+  semanticService = new SemanticSearchService((state, progress) => {
+    logger.log('Tab Wind: AI state changed:', state, progress);
+    aiProgress.classList.toggle('visible', state === 'downloading');
+    aiProgressBar.style.width = `${progress}%`;
+    updateAiLabel();
+
+    // The model usually becomes ready while the user is already staring at
+    // keyword results. Refresh them instead of making them retype.
+    if ((state === 'ready' || state === 'fallback') &&
+        overlay.classList.contains('visible') &&
+        input.value.trim().length > 2) {
+      handleSearch();
+    }
+  });
+
+  // Always visible: the toggle has to stay reachable even when AI is off or
+  // unavailable. The label carries the state.
+  aiIndicator.style.display = 'flex';
+  updateAiLabel();
+
+  aiToggle.addEventListener('change', () => {
+    aiEnabled = aiToggle.checked;
+    chrome.runtime.sendMessage({ action: 'ai-enabled-set', enabled: aiEnabled })
+      .catch(() => { /* background asleep; it will re-read on next wake */ });
+
+    if (aiEnabled) {
+      void semanticService.init();
+    } else {
+      clearTimeout(debounceTimer);
+      aiProgress.classList.remove('visible');
+    }
+    updateAiLabel();
+  });
+
+  // Cosine similarity below this is treated as noise rather than a match.
+  // Provisional: the useful range depends on the model and on how short tab
+  // titles are, so tune it against the scores logged in handleSearch.
+  const SEMANTIC_THRESHOLD = 0.25;
+
+  function handleSearch() {
+    const rawQuery = input.value.trim();
+    const query = rawQuery.toLowerCase();
+
+    // 1. Instant substring match. Rendered synchronously so there is always
+    // something on screen; with AI on it is a placeholder that the model's
+    // ranking replaces a moment later.
     const keywordResults = openTabs.filter(tab => {
       const title = (tab.title || '').toLowerCase();
       const url = (tab.url || '').toLowerCase();
@@ -199,42 +255,60 @@ function initContentScript() {
 
     renderList(keywordResults);
 
-    // 2. Trigger Semantic Search (Debounced) — only if AI is enabled
-    if (semanticService.isAvailable && aiEnabled && query.length > 2) {
-      clearTimeout(debounceTimer);
-      aiIndicator.style.color = '#3b82f6'; // Blue when "thinking"
-      aiIndicator.textContent = '✨ AI Thinking...';
+    // 2. Semantic pass, debounced.
+    if (!aiEnabled || rawQuery.length <= 2 || !semanticService.isAvailable) return;
 
-      debounceTimer = setTimeout(async () => {
-        try {
-          const rankedIds = await semanticService.rankTabs(query, openTabs);
-          if (rankedIds.length > 0) {
-            // Re-order openTabs based on rank, or merge?
-            // Let's create a new sorted list: Ranked items first, then the rest.
-            const rankedTabs = rankedIds.map(id => openTabs.find(t => t.id === id)).filter(Boolean) as TabData[];
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
+      // The query is now milliseconds of dot products, but the user can still
+      // have typed on while it ran — drop stale responses.
+      if (input.value.trim() !== rawQuery) return;
 
-            // Deduping isn't strictly needed if we just show ranked, 
-            // but if we want mixed, we need to be careful.
-            // For now: Just show the Semantic Results if decent score?
-            // Simpler: Just render the ranked list (it contains the top matches).
-            // If rankTabs returns ALL tabs sorted, we just use that.
-            // If it returns subset, we might want to fallback.
-            // Assumption: rankTabs returns sorted IDs of RELEVANT tabs.
+      try {
+        const ranked = await semanticService.rankTabs(rawQuery, openTabs);
+        if (input.value.trim() !== rawQuery) return;
 
-            renderList(rankedTabs);
-          }
-        } catch (err) {
-          console.error("Tab Wind: Semantic search error", err);
-        } finally {
-          aiIndicator.style.color = '#10b981'; // Green when done
-          aiIndicator.textContent = '✨ AI Results';
-          setTimeout(() => {
-            aiIndicator.textContent = '✨ AI Ready';
-            aiIndicator.style.color = '#666';
-          }, 2000);
+        // Scores are logged so the threshold can be tuned against real tabs
+        // instead of guessed: the useful cutoff is not obvious a priori.
+        logger.log(
+          `Tab Wind: scores for "${rawQuery}" (threshold ${SEMANTIC_THRESHOLD})`,
+          ranked.slice(0, 10).map(r => {
+            const tab = openTabs.find(t => t.id === r.id);
+            return `${r.score.toFixed(3)}  ${(tab?.title || '?').slice(0, 60)}`;
+          })
+        );
+
+        // With AI on, the model's ranking drives the whole list — ordering is
+        // entirely its call, including for tabs that match literally.
+        //
+        // The one exception is inclusion: a tab whose title or URL literally
+        // contains the query is never dropped for scoring below the
+        // threshold. Typing a title verbatim and watching it vanish reads as
+        // a broken search, not as a judgement call.
+        const keywordIds = new Set(keywordResults.map(t => t.id));
+        const rankedTabs: TabData[] = [];
+
+        for (const { id, score } of ranked) {
+          if (score < SEMANTIC_THRESHOLD && !keywordIds.has(id)) continue;
+          const tab = openTabs.find(t => t.id === id);
+          if (tab) rankedTabs.push(tab);
         }
-      }, 300); // 300ms debounce
-    }
+
+        // Tabs the model could not score at all (no cached vector yet) are
+        // absent from `ranked` entirely, so re-add any literal matches that
+        // the loop above never saw.
+        const rankedIds = new Set(rankedTabs.map(t => t.id));
+        for (const tab of keywordResults) {
+          if (!rankedIds.has(tab.id)) rankedTabs.push(tab);
+        }
+
+        if (rankedTabs.length > 0) {
+          renderList(rankedTabs);
+        }
+      } catch (err) {
+        console.error("Tab Wind: Semantic search error", err);
+      }
+    }, 150);
   }
 
   function renderResults() {

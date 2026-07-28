@@ -1,15 +1,20 @@
 {
     "manifest_version": 3,
     "name": "Tab Wind Command",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Fast tab search and AI-powered switching command palette.",
     "permissions": [
         "tabs",
-        "scripting"
+        "scripting",
+        "offscreen",
+        "storage"
     ],
     "host_permissions": [
         "<all_urls>"
     ],
+    "content_security_policy": {
+        "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+    },
     "background": {
         "service_worker": "src/background.ts"
     },

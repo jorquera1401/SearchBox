@@ -1,4 +1,4 @@
-:host {
+inter:host {
     all: initial;
     /* Reset all inherited properties */
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -173,4 +173,25 @@ ul::-webkit-scrollbar-thumb {
 #ai-toggle:checked + .toggle-track .toggle-thumb {
     left: 14px;
     background: #fff;
+}
+
+/* Shown only while the embedding model downloads on first use. */
+#ai-progress {
+    display: none;
+    height: 2px;
+    margin: 0 12px 6px;
+    background: #222;
+    border-radius: 1px;
+    overflow: hidden;
+}
+
+#ai-progress.visible {
+    display: block;
+}
+
+#ai-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: #1d4ed8;
+    transition: width 0.3s ease;
 }

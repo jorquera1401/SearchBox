@@ -8,6 +8,110 @@ function isRestrictedUrl(url: string | undefined): boolean {
     return url.startsWith("chrome://") || url.startsWith("edge://") || url.startsWith("about:") || url.includes("chrome.google.com/webstore");
 }
 
+// --- Offscreen document: the single host for the embedding model ---
+//
+// The content script runs in every tab, so the model cannot live there without
+// duplicating ~129 MB per tab. The offscreen document is a single shared
+// context, and this service worker owns its lifecycle.
+
+const OFFSCREEN_URL = "offscreen.html";
+const AI_ENABLED_KEY = "tabwind-ai-enabled";
+const WARM_DEBOUNCE_MS = 2000;
+
+let offscreenPromise: Promise<void> | null = null;
+
+async function hasOffscreenDocument(): Promise<boolean> {
+    const contexts = await chrome.runtime.getContexts({
+        contextTypes: ["OFFSCREEN_DOCUMENT" as chrome.runtime.ContextType],
+        documentUrls: [chrome.runtime.getURL(OFFSCREEN_URL)]
+    });
+    return contexts.length > 0;
+}
+
+async function ensureOffscreen(): Promise<void> {
+    if (await hasOffscreenDocument()) return;
+
+    // Concurrent createDocument calls throw, so share one in-flight promise.
+    if (offscreenPromise) return offscreenPromise;
+
+    offscreenPromise = chrome.offscreen.createDocument({
+        url: OFFSCREEN_URL,
+        reasons: ["WORKERS" as chrome.offscreen.Reason],
+        justification: "Run the local embedding model for semantic tab search"
+    }).catch((err) => {
+        // A parallel caller may have created it between our check and this call.
+        if (!String(err).includes("Only a single offscreen")) throw err;
+    }).finally(() => {
+        offscreenPromise = null;
+    });
+
+    return offscreenPromise;
+}
+
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function sendToOffscreen<T = any>(message: any): Promise<T | null> {
+    // createDocument resolves once the document exists, but its module script
+    // registers the onMessage listener a tick later. Until then sends fail
+    // with "Receiving end does not exist", so retry briefly.
+    for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+            await ensureOffscreen();
+            return await chrome.runtime.sendMessage({ ...message, target: "offscreen" });
+        } catch (e) {
+            const isNotReady = String(e).includes("Receiving end does not exist");
+            if (!isNotReady || attempt === 3) {
+                logger.warn("Tab Wind: Offscreen message failed", message?.type, e);
+                return null;
+            }
+            await delay(100 * (attempt + 1));
+        }
+    }
+    return null;
+}
+
+async function isAiEnabled(): Promise<boolean> {
+    const stored = await chrome.storage.local.get(AI_ENABLED_KEY);
+    return stored[AI_ENABLED_KEY] !== false;
+}
+
+function toTabInput(tabs: chrome.tabs.Tab[]) {
+    return tabs
+        .filter((t) => t.id !== undefined && !isRestrictedUrl(t.url))
+        .map((t) => ({ id: t.id as number, title: t.title, url: t.url }));
+}
+
+// --- Proactive warming ---
+// Embedding tabs as they appear means the vectors are already cached by the
+// time the palette opens, so a query is just dot products.
+
+let warmTimer: ReturnType<typeof setTimeout> | undefined;
+
+function scheduleWarm(): void {
+    clearTimeout(warmTimer);
+    warmTimer = setTimeout(() => { void warmTabs(); }, WARM_DEBOUNCE_MS);
+}
+
+async function warmTabs(): Promise<void> {
+    if (!(await isAiEnabled())) return;
+
+    // Never spin up the offscreen document — let alone start a 129 MB
+    // download — just because a tab event fired. Warming only piggybacks on a
+    // model the user already opted into and finished downloading.
+    if (!(await hasOffscreenDocument())) return;
+
+    const status = await sendToOffscreen<{ state: string }>({ type: "STATUS" });
+    if (status?.state !== "ready") return;
+
+    const tabs = await chrome.tabs.query({});
+    await sendToOffscreen({ type: "EMBED_TABS", tabs: toTabInput(tabs) });
+}
+
+chrome.tabs.onCreated.addListener(() => scheduleWarm());
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+    if (changeInfo.status === "complete" || changeInfo.title) scheduleWarm();
+});
+
 chrome.runtime.onInstalled.addListener((details) => {
     logger.log("Extension installed/updated. Reason:", details.reason);
 
@@ -146,6 +250,9 @@ interface SwitchTabMessage {
 }
 
 chrome.runtime.onMessage.addListener((request: any, sender, sendResponse) => {
+    // Messages addressed to the offscreen document also reach this listener.
+    if (request?.target === "offscreen") return false;
+
     logger.log("Tab Wind: Background received message from", sender.tab?.id, request);
 
     if (request.action === "switch-tab") {
@@ -157,6 +264,50 @@ chrome.runtime.onMessage.addListener((request: any, sender, sendResponse) => {
             chrome.tabs.update(tabId, { active: true });
         });
         sendResponse({ status: "ok" });
+        return true;
     }
-    return true;
+
+    if (request.action === "semantic-status") {
+        (async () => {
+            const status = await sendToOffscreen({ type: "STATUS" });
+            sendResponse(status ?? { state: "failed", progress: 0, error: "offscreen unavailable" });
+        })();
+        return true;
+    }
+
+    if (request.action === "semantic-init") {
+        (async () => {
+            const status = await sendToOffscreen({ type: "INIT" });
+            sendResponse(status ?? { state: "failed", progress: 0, error: "offscreen unavailable" });
+        })();
+        return true;
+    }
+
+    if (request.action === "semantic-rank") {
+        (async () => {
+            const response = await sendToOffscreen<{ ok: boolean; results?: any[] }>({
+                type: "RANK",
+                query: request.query,
+                tabs: request.tabs || []
+            });
+            sendResponse({ results: response?.ok ? response.results : [] });
+        })();
+        return true;
+    }
+
+    if (request.action === "ai-enabled-get") {
+        (async () => sendResponse({ enabled: await isAiEnabled() }))();
+        return true;
+    }
+
+    if (request.action === "ai-enabled-set") {
+        (async () => {
+            await chrome.storage.local.set({ [AI_ENABLED_KEY]: !!request.enabled });
+            if (request.enabled) scheduleWarm();
+            sendResponse({ status: "ok" });
+        })();
+        return true;
+    }
+
+    return false;
 });

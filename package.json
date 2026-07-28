@@ -1,6 +1,6 @@
 {
     "name": "tab-wind-command",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Fast tab search and switching command palette.",
     "scripts": {
         "dev": "vite",
@@ -16,5 +16,8 @@
         "@types/node": "^20.10.0",
         "typescript": "^5.3.3",
         "vite": "^5.0.10"
+    },
+    "dependencies": {
+        "@huggingface/transformers": "^4.2.0"
     }
 }

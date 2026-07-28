@@ -7,7 +7,11 @@
     try {
         if (typeof window.LanguageModel !== 'undefined') {
             const avail = await window.LanguageModel.availability();
-            available = avail === 'available';
+            // 'downloadable' and 'downloading' are usable states: create()
+            // below kicks off (or joins) the download. Treating only
+            // 'available' as usable left users whose model had not been
+            // fetched yet permanently stuck with AI reported as unsupported.
+            available = avail === 'available' || avail === 'downloadable' || avail === 'downloading';
             console.log("Tab Wind Bridge: LanguageModel availability:", avail);
         } else {
             console.warn("Tab Wind Bridge: window.LanguageModel not found.");
@@ -33,7 +37,12 @@
                         initialPrompts: [{
                             role: "system",
                             content: "You are a browser tab relevance ranker. Given a search query and a list of browser tabs, return ONLY a JSON object with key 'ids' containing an array of tab IDs (integers) sorted by relevance to the query, most relevant first. Only include tabs that are genuinely relevant to the query."
-                        }]
+                        }],
+                        monitor(m) {
+                            m.addEventListener('downloadprogress', (e) => {
+                                console.log(`Tab Wind Bridge: model download ${Math.round((e.loaded || 0) * 100)}%`);
+                            });
+                        }
                     });
                 }
 

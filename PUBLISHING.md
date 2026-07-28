@@ -2,39 +2,68 @@
 
 ¡Tu extensión está lista! Sigue estos pasos para publicarla.
 
-## 1. Preparación (Ya realizada)
-- **Archivo**: Tienes un archivo `dist.zip` en la raíz del proyecto.
-- **Privacidad**: Tienes un archivo `PRIVACY.md` con la política lista.
-- **Manifest**: Versión `1.0.0` y descripción limpia.
+## 1. Preparación
+
+- **Manifest**: Versión `1.1.0` y descripción limpia.
+- **Privacidad**: `PRIVACY.md` está actualizado con la descarga del modelo.
+- **Paquete**: Genera `dist.zip` desde cero antes de cada envío:
+
+```bash
+npm run build
+rm -f dist.zip && cd dist && zip -rq ../dist.zip . -x ".vite/*" && cd ..
+```
+
+El paquete pesa unos **13 MB**. La mayor parte es el runtime WASM de ONNX Runtime, que debe viajar dentro de la extensión (ver Sección 7).
 
 ## 2. Cuenta de Desarrollador
+
 1. Ve al [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/developer/dashboard).
 2. Si es tu primera vez, deberás pagar una **tarifa única de registro de $5 USD**.
 
 ## 3. Subir el Paquete
+
 1. Haz clic en el botón azul **"NUEVO ELEMENTO"** (New Item).
-2. Arrastra y suelta el archivo `dist.zip` que generamos.
+2. Arrastra y suelta el archivo `dist.zip`.
 
 ## 4. Ficha de la Tienda (Store Listing)
+
 Completa los campos obligatorios:
-- **Descripción**: Explica qué hace la extensión. Menciona que usa "Chrome Built-in AI" para búsquedas inteligentes pero privadas.
+
+- **Descripción**: Explica qué hace la extensión. Menciona que la búsqueda semántica corre **localmente en el dispositivo**, sin enviar tus pestañas a ningún servidor.
 - **Categoría**: "Productividad" o "Herramientas de búsqueda".
 - **Idioma**: Español (o el que prefieras como principal).
-- **Icono**: Sube `public/icons/icon128.png` (o el SVG si te lo permite, aunque suele pedir PNG de 128x128).
-- **Capturas de pantalla**: Toma 1 o 2 capturas de la extensión funcionando (el modal negro flotante). Sube al menos una de 1280x800px.
+- **Icono**: Sube `public/icons/store-icon-128.png` (PNG de 128x128).
+- **Capturas de pantalla**: Hay material listo en `public/store-assets/`. Sube al menos una de 1280x800px.
 
 ## 5. Privacidad (Privacy)
+
 1. **Política de Privacidad**: Copia y pega el contenido completo de `PRIVACY.md`.
-2. **Permisos**: Te pedirá justificación para:
-    - `tabs`: "Needed to index and search through open tabs."
-    - `scripting`: "Needed to inject the search command palette (modal) into the current page."
-    - `host_permissions` (`<all_urls>`): "Required to ensure the command palette works on any URL the user visits."
-3. **Uso de Datos**: Marca que **NO** recolectas datos de usuario (todo es local).
+2. **Uso de Datos**: Marca que **NO** recolectas datos de usuario. Es cierto: los títulos y URLs nunca salen del dispositivo.
+3. **Permisos**: Te pedirá justificación para cada uno.
+
+| Permiso | Justificación |
+|---|---|
+| `tabs` | Needed to index and search through open tabs. |
+| `scripting` | Needed to inject the search command palette (modal) into the current page. |
+| `storage` | Needed to store the user's AI on/off preference and the locally computed tab embeddings. No personal data is stored. |
+| `offscreen` | Needed to run the local embedding model in a single shared context. Without it the model would load once per open tab. |
+| `host_permissions` (`<all_urls>`) | Required to ensure the command palette works on any URL the user visits. |
 
 ## 6. Revisión y Publicación
+
 1. Haz clic en **"Enviar para revisión"** (Submit for Review).
 2. Google revisará la extensión (suele tardar 1-2 días laborables).
 3. ¡Recibirás un correo cuando esté publicada!
 
 ---
-**Nota sobre IA**: Como es una característica experimental de Chrome, es posible que la tienda pregunte sobre el uso de "IA". Aclara siempre que usas **"Chrome Built-in AI APIs (window.ai)"** y que **todo el procesamiento es on-device (local)**.
+
+## 7. Nota sobre IA y código remoto
+
+Este es el punto que más mira la revisión. Describe el funcionamiento con precisión:
+
+- **Camino principal**: la extensión descarga, la primera vez que el usuario activa la IA, los **pesos de un modelo público de embeddings** (`Xenova/paraphrase-multilingual-MiniLM-L12-v2`, ~129 MB) desde el CDN de HuggingFace. Esa descarga es idéntica para todos los usuarios y **no contiene ningún dato del usuario**. Los pesos quedan cacheados y toda la inferencia ocurre en el dispositivo.
+- **Fallback**: si el modelo no puede cargarse, se usa la **Chrome Built-in AI API (`window.LanguageModel`)**, también on-device.
+
+**Sobre la política de código remoto (Remote Hosted Code):** la extensión **no la incumple**. Lo que se descarga son ficheros de pesos `.onnx`, que son **datos**, no código ejecutable. Todo el código —incluido el runtime WASM de ONNX Runtime— viaja dentro del paquete y se ejecuta desde `chrome-extension://`. Por eso el `.zip` pesa 13 MB en lugar de unos pocos KB: empaquetar ese runtime es precisamente lo que mantiene la extensión conforme.
+
+Si el revisor pregunta por la conexión de red, la respuesta corta es: *"One-time download of public model weights (data, not code) from the HuggingFace CDN. No user data is transmitted."*
