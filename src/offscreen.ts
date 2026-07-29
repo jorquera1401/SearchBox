@@ -1,35 +1,15 @@
-// src/offscreen.ts
-//
-// Owns the embedding model. This runs in the extension's single offscreen
-// document, so there is exactly one copy of the model in memory no matter how
-// many tabs are open.
-//
-// Ranking is cosine similarity between the query vector and cached tab
-// vectors. Tab vectors are computed once and reused, so a warm query is a few
-// hundred dot products over 384 floats — microseconds of work.
+// Owns the embedding model. See CLAUDE.md for why it lives here.
 
 import { pipeline, env, type FeatureExtractionPipeline } from '@huggingface/transformers';
 import { vectorCache, cacheKey, embeddingText, dot } from './utils/vectorCache';
 import { logger } from './utils/logger';
 
-// Both models are 384-dim and ~129 MB, so switching is a like-for-like swap.
-// They differ in training objective: e5 is trained for retrieval (a short
-// query against documents), which is what this palette does, while the
-// paraphrase model is trained for sentence-pair similarity. Flip ACTIVE_MODEL
-// to compare them on real tabs -- the vector cache is namespaced per model,
-// so no stale vectors carry over.
+// Both are 384-dim and ~129 MB. Flip ACTIVE_MODEL to compare them on real tabs.
 const MODELS = {
     'e5-small': {
         id: 'Xenova/multilingual-e5-small',
-        // e5 was trained with these prefixes. Omitting them measurably
-        // degrades results; they are not decorative.
         queryPrefix: 'query: ',
         passagePrefix: 'passage: ',
-        // e5 packs its cosine scores into a narrow, high band (relevant ~0.85,
-        // irrelevant ~0.75), so the cutoff lives with the model rather than as
-        // one shared constant -- the paraphrase model's 0.25 would let
-        // everything through here. Starting estimate; tune against the scores
-        // logged in the page console.
         threshold: 0.8,
     },
     'paraphrase': {
@@ -45,19 +25,13 @@ const MODEL = MODELS[ACTIVE_MODEL];
 
 const BATCH_SIZE = 32;
 
-// Weights are fetched from the HuggingFace CDN on first use and kept in the
-// Cache API, so they survive both browser restarts and extension updates.
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 const wasmBackend = env.backends?.onnx?.wasm;
 if (wasmBackend) {
-    // Must point at the copy shipped inside the extension. Left unset, the
-    // runtime dynamically imports its loader from the jsdelivr CDN, which the
-    // extension CSP blocks -- surfacing as "no available backend found".
-    // vite.config.ts places these files in ort/.
+    // Without a local path the runtime imports its loader from a CDN, which
+    // the CSP blocks. vite.config.ts puts the binaries in ort/.
     wasmBackend.wasmPaths = chrome.runtime.getURL('ort/');
-    // Multi-threaded WASM needs SharedArrayBuffer, which needs COOP/COEP
-    // headers that extension pages don't have. Single-threaded it is.
     wasmBackend.numThreads = 1;
 }
 
@@ -69,8 +43,7 @@ let errorMessage = '';
 let extractor: FeatureExtractionPipeline | null = null;
 let initPromise: Promise<FeatureExtractionPipeline> | null = null;
 
-// Per-file byte counters. transformers.js reports progress per file, so we
-// aggregate them to get one meaningful number for the UI.
+// Progress is reported per file, so aggregate into one number for the UI.
 const fileProgress = new Map<string, { loaded: number; total: number }>();
 
 function updateProgress(): void {
@@ -113,17 +86,14 @@ function getModel(): Promise<FeatureExtractionPipeline> {
             state = 'failed';
             errorMessage = e instanceof Error ? e.message : String(e);
             console.error('Tab Wind: Embedding model failed to load', e);
-            // Drop the cached promise so a later attempt can retry rather than
-            // replaying this rejection forever.
-            initPromise = null;
+            initPromise = null; // let a later attempt retry
             throw e;
         });
 
     return initPromise;
 }
 
-// ONNX sessions are not reentrant-friendly and batching large tensors spikes
-// memory, so every inference call goes through this chain.
+// Serialises inference: concurrent sessions spike memory.
 let queue: Promise<unknown> = Promise.resolve();
 
 function runExclusive<T>(fn: () => Promise<T>): Promise<T> {
@@ -208,10 +178,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             return false;
 
         case 'INIT':
-            // Called directly rather than through runExclusive: that defers to
-            // a microtask, so `state` would still read 'idle' in the response
-            // below and the caller would never start polling for progress.
-            // getModel() flips state to 'downloading' synchronously.
+            // Not via runExclusive: that defers to a microtask, so the response
+            // below would still read 'idle' and the caller would never poll.
             getModel().catch(() => undefined);
             sendResponse({ state, progress });
             return false;
@@ -223,9 +191,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             return true;
 
         case 'RANK':
-            // All scores are returned, unfiltered, so the caller can log them
-            // for tuning; `threshold` travels with them because only the model
-            // knows the scale its scores live on.
+            // Unfiltered, so the caller can log scores for tuning.
             runExclusive(() => rank(message.query, message.tabs || []))
                 .then((results) => sendResponse({ ok: true, results, threshold: MODEL.threshold }))
                 .catch((e) => sendResponse({ ok: false, error: String(e) }));
@@ -236,7 +202,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
 });
 
-// Flush the cache on teardown; the debounced persist may still be pending.
+// The debounced persist may still be pending on teardown.
 self.addEventListener('beforeunload', () => {
     void vectorCache.persist();
 });

@@ -64,9 +64,8 @@ function initContentScript() {
   const aiProgress = shadow.getElementById('ai-progress') as HTMLDivElement;
   const aiProgressBar = shadow.getElementById('ai-progress-bar') as HTMLDivElement;
 
-  // The toggle lives in chrome.storage, not localStorage: a content script's
-  // localStorage belongs to the host page, so the setting would be per-site
-  // and would write into every site the user visits.
+  // chrome.storage, not localStorage: a content script's localStorage belongs
+  // to the host page, so the setting would be per-site.
   let aiEnabled = true;
   aiToggle.checked = aiEnabled;
 
@@ -147,8 +146,7 @@ function initContentScript() {
   function openModal() {
     logger.log("Tab Wind: Opening modal...");
 
-    // First real signal of intent. Loading the model on script load instead
-    // would fire in every tab and start a large download unprompted.
+    // First signal of intent; on script load this would fire in every tab.
     if (aiEnabled) void semanticService.init();
 
     overlay.classList.add('visible');
@@ -160,10 +158,7 @@ function initContentScript() {
     requestAnimationFrame(() => {
       input.focus();
     });
-    setTimeout(() => {
-      input.focus();
-      // console.log("Tab Wind: Input focused (timeout)");
-    }, 100);
+    setTimeout(() => input.focus(), 100);
   }
 
   function closeModal() {
@@ -207,8 +202,8 @@ function initContentScript() {
     aiProgressBar.style.width = `${progress}%`;
     updateAiLabel();
 
-    // The model usually becomes ready while the user is already staring at
-    // keyword results. Refresh them instead of making them retype.
+    // The model tends to become ready mid-search; refresh rather than make
+    // the user retype.
     if ((state === 'ready' || state === 'fallback') &&
         overlay.classList.contains('visible') &&
         input.value.trim().length > 2) {
@@ -216,8 +211,7 @@ function initContentScript() {
     }
   });
 
-  // Always visible: the toggle has to stay reachable even when AI is off or
-  // unavailable. The label carries the state.
+  // Always visible so the toggle stays reachable; the label carries the state.
   aiIndicator.style.display = 'flex';
   updateAiLabel();
 
@@ -239,9 +233,8 @@ function initContentScript() {
     const rawQuery = input.value.trim();
     const query = rawQuery.toLowerCase();
 
-    // 1. Instant substring match. Rendered synchronously so there is always
-    // something on screen; with AI on it is a placeholder that the model's
-    // ranking replaces a moment later.
+    // 1. Instant substring match. With AI on this is a placeholder that the
+    // model's ranking replaces a moment later.
     const keywordResults = openTabs.filter(tab => {
       const title = (tab.title || '').toLowerCase();
       const url = (tab.url || '').toLowerCase();
@@ -255,17 +248,14 @@ function initContentScript() {
 
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(async () => {
-      // The query is now milliseconds of dot products, but the user can still
-      // have typed on while it ran — drop stale responses.
+      // Drop stale responses: the user may have typed on.
       if (input.value.trim() !== rawQuery) return;
 
       try {
-        // The cutoff comes from the model: each one scores on its own scale.
         const { ranked, threshold } = await semanticService.rankTabs(rawQuery, openTabs);
         if (input.value.trim() !== rawQuery) return;
 
-        // Scores are logged so the threshold can be tuned against real tabs
-        // instead of guessed: the useful cutoff is not obvious a priori.
+        // Logged so the threshold can be tuned against real tabs, not guessed.
         logger.log(
           `Tab Wind: scores for "${rawQuery}" (threshold ${threshold})`,
           ranked.slice(0, 10).map(r => {
@@ -274,13 +264,9 @@ function initContentScript() {
           })
         );
 
-        // With AI on, the model's ranking drives the whole list — ordering is
-        // entirely its call, including for tabs that match literally.
-        //
-        // The one exception is inclusion: a tab whose title or URL literally
-        // contains the query is never dropped for scoring below the
-        // threshold. Typing a title verbatim and watching it vanish reads as
-        // a broken search, not as a judgement call.
+        // Ordering is entirely the model's call. Inclusion is not: a literal
+        // match is never dropped for scoring low, since typing a title
+        // verbatim and watching it vanish reads as a broken search.
         const keywordIds = new Set(keywordResults.map(t => t.id));
         const rankedTabs: TabData[] = [];
 
@@ -290,9 +276,7 @@ function initContentScript() {
           if (tab) rankedTabs.push(tab);
         }
 
-        // Tabs the model could not score at all (no cached vector yet) are
-        // absent from `ranked` entirely, so re-add any literal matches that
-        // the loop above never saw.
+        // Tabs with no cached vector yet are absent from `ranked` entirely.
         const rankedIds = new Set(rankedTabs.map(t => t.id));
         for (const tab of keywordResults) {
           if (!rankedIds.has(tab.id)) rankedTabs.push(tab);

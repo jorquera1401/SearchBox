@@ -9,10 +9,6 @@ function isRestrictedUrl(url: string | undefined): boolean {
 }
 
 // --- Offscreen document: the single host for the embedding model ---
-//
-// The content script runs in every tab, so the model cannot live there without
-// duplicating ~129 MB per tab. The offscreen document is a single shared
-// context, and this service worker owns its lifecycle.
 
 const OFFSCREEN_URL = "offscreen.html";
 const AI_ENABLED_KEY = "tabwind-ai-enabled";
@@ -51,9 +47,8 @@ async function ensureOffscreen(): Promise<void> {
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function sendToOffscreen<T = any>(message: any): Promise<T | null> {
-    // createDocument resolves once the document exists, but its module script
-    // registers the onMessage listener a tick later. Until then sends fail
-    // with "Receiving end does not exist", so retry briefly.
+    // createDocument resolves before the document's module registers its
+    // listener, so early sends fail with "Receiving end does not exist".
     for (let attempt = 0; attempt < 4; attempt++) {
         try {
             await ensureOffscreen();
@@ -82,8 +77,7 @@ function toTabInput(tabs: chrome.tabs.Tab[]) {
 }
 
 // --- Proactive warming ---
-// Embedding tabs as they appear means the vectors are already cached by the
-// time the palette opens, so a query is just dot products.
+// Embeds tabs as they appear, so vectors are cached before the palette opens.
 
 let warmTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -95,9 +89,8 @@ function scheduleWarm(): void {
 async function warmTabs(): Promise<void> {
     if (!(await isAiEnabled())) return;
 
-    // Never spin up the offscreen document — let alone start a 129 MB
-    // download — just because a tab event fired. Warming only piggybacks on a
-    // model the user already opted into and finished downloading.
+    // Never start a 129 MB download because a tab event fired: warming only
+    // piggybacks on a model the user already opted into.
     if (!(await hasOffscreenDocument())) return;
 
     const status = await sendToOffscreen<{ state: string }>({ type: "STATUS" });

@@ -6,11 +6,8 @@ import manifest from './manifest.json';
 
 const ORT_DIST = resolve(__dirname, 'node_modules/onnxruntime-web/dist');
 
-// The WASM backend picks its binary at runtime from what the browser supports:
-// the JSPI build where WebAssembly.Suspending exists, the asyncify build
-// otherwise, and the plain build for sync paths. Which one it asks for is not
-// knowable at build time, so all three ship. The jsep build is excluded --
-// that one is only for the WebGPU backend, and we run on WASM.
+// Which variant the browser asks for is decided at runtime, not build time, so
+// all three ship. jsep is excluded: that one is for the WebGPU backend.
 const ORT_FILES = [
     'ort-wasm-simd-threaded.wasm',
     'ort-wasm-simd-threaded.mjs',
@@ -20,18 +17,15 @@ const ORT_FILES = [
     'ort-wasm-simd-threaded.jspi.mjs',
 ];
 
-// The ONNX runtime resolves its binaries at runtime and falls back to the
-// jsdelivr CDN when it cannot find them locally -- which the extension CSP
-// blocks. Shipping them under a predictable path (paired with `wasmPaths` in
-// src/offscreen.ts) is what keeps inference working, and offline.
+// Without these shipped locally the runtime falls back to a CDN, which the
+// extension CSP blocks. Paired with `wasmPaths` in src/offscreen.ts.
 function copyOrtRuntime(): Plugin {
     return {
         name: 'copy-ort-runtime',
         apply: 'build',
 
-        // Vite also emits a hashed copy of the .wasm from the runtime's
-        // `new URL(...)` reference. Since wasmPaths points at ort/ instead,
-        // that copy is dead weight -- drop it rather than ship 25 MB twice.
+        // Vite emits its own hashed copy from the runtime's `new URL(...)`.
+        // wasmPaths points at ort/, so that copy is 25 MB of dead weight.
         generateBundle(_options, bundle) {
             for (const fileName of Object.keys(bundle)) {
                 if (/ort-wasm.*\.wasm$/.test(fileName)) delete bundle[fileName];
@@ -58,18 +52,16 @@ export default defineConfig({
     plugins: [crx({ manifest }), copyOrtRuntime()],
     resolve: {
         alias: {
-            // We run inference on WASM (device: 'wasm'), so pull in the
-            // WASM-only ORT build rather than the WebGPU one. Same binaries,
-            // but it drops the unused WebGPU JS from the bundle. transformers
-            // guards its WebGPU usage behind `if (ONNX_ENV.webgpu)`.
+            // We run on WASM, so drop the unused WebGPU JS. Safe because
+            // transformers guards its usage behind `if (ONNX_ENV.webgpu)`.
             'onnxruntime-web/webgpu': 'onnxruntime-web/wasm',
         },
     },
     build: {
         rollupOptions: {
             input: {
-                // crxjs only picks up entry points named in the manifest, and
-                // offscreen documents are created programmatically.
+                // crxjs only picks up entries named in the manifest; offscreen
+                // documents are created programmatically.
                 offscreen: 'offscreen.html',
             },
         },

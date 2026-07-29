@@ -1,12 +1,8 @@
-// src/SemanticSearchService.ts
+// Content-script side of semantic search. Holds no model: queries go to the
+// background worker, which relays them to the offscreen document.
 //
-// Content-script side of semantic search. Holds no model: it forwards queries
-// to the background service worker, which relays them to the offscreen
-// document where the embedding model lives.
-//
-// If the embedding model cannot load, this falls back to the original
-// window.LanguageModel bridge (public/ai-bridge.js), which ranks tabs by
-// prompting Chrome's on-device LLM.
+// Falls back to the window.LanguageModel bridge (public/ai-bridge.js) when the
+// embedding model cannot load.
 
 import { logger } from './utils/logger';
 
@@ -70,9 +66,8 @@ export class SemanticSearchService {
     }
 
     /**
-     * Starts the model. Called when the user first opens the palette with AI
-     * enabled — never on content script load, which would fire in every tab
-     * and start a large download without intent.
+     * Called when the palette first opens with AI enabled — never on script
+     * load, which fires in every tab and would start the download unprompted.
      */
     async init(): Promise<void> {
         if (this.initStarted) return;
@@ -128,14 +123,10 @@ export class SemanticSearchService {
         this.pollTimer = setTimeout(tick, POLL_INTERVAL_MS);
     }
 
-    /**
-     * Returns every tab scored, unfiltered, plus the cutoff to apply. The
-     * threshold comes from the model rather than the caller because each
-     * model's scores live on a different scale.
-     */
+    /** Unfiltered, plus the cutoff to apply — models score on different scales. */
     async rankTabs(query: string, tabs: TabInput[]): Promise<RankResult> {
         if (this.state === 'fallback') {
-            // The LLM already filtered for relevance and scores are synthetic.
+            // The LLM already filtered for relevance; its scores are synthetic.
             return { ranked: await this.rankViaLanguageModel(query, tabs), threshold: 0 };
         }
         if (this.state !== 'ready') return { ranked: [], threshold: 1 };
@@ -156,7 +147,7 @@ export class SemanticSearchService {
         }
     }
 
-    // --- LanguageModel fallback (original implementation) ---
+    // --- LanguageModel fallback ---
 
     private startFallback(): void {
         this.setState('fallback', 0);
@@ -197,8 +188,6 @@ export class SemanticSearchService {
             const requestId = Math.random().toString(36).substring(7);
 
             this.pendingRequests.set(requestId, (result) => {
-                // The LLM already filters for relevance, so anything it returns
-                // is treated as a confident match by the caller's threshold.
                 const ids: number[] = Array.isArray(result) ? result : [];
                 resolve(ids.map((id) => ({ id, score: 1 })));
             });
