@@ -13,7 +13,7 @@ npm run build
 rm -f dist.zip && cd dist && zip -rq ../dist.zip . -x ".vite/*" && cd ..
 ```
 
-El `.zip` pesa unos **9 MB** (38 MB descomprimido). Casi todo es el runtime WASM de ONNX Runtime, que debe viajar dentro de la extensión (ver Sección 7).
+El `.zip` pesa unos **6.7 MB** (28 MB descomprimido). Casi todo es el runtime WASM de ONNX Runtime, que debe viajar dentro de la extensión (ver Sección 7).
 
 ## 2. Cuenta de Desarrollador
 
@@ -67,6 +67,6 @@ Este es el punto que más mira la revisión. Describe el funcionamiento con prec
 - **Camino principal**: la extensión descarga, la primera vez que el usuario activa la IA, los **pesos de un modelo público de embeddings** (`Xenova/multilingual-e5-small`, ~129 MB) desde el CDN de HuggingFace. Esa descarga es idéntica para todos los usuarios y **no contiene ningún dato del usuario**. Los pesos quedan cacheados y toda la inferencia ocurre en el dispositivo.
 - **Fallback**: si el modelo no puede cargarse, se usa la **Chrome Built-in AI API (`window.LanguageModel`)**, también on-device.
 
-**Sobre la política de código remoto (Remote Hosted Code):** la extensión **no la incumple**. Lo que se descarga son ficheros de pesos `.onnx`, que son **datos**, no código ejecutable. Todo el código —incluido el runtime WASM de ONNX Runtime— viaja dentro del paquete y se ejecuta desde `chrome-extension://`. Por eso el `.zip` pesa 9 MB en lugar de unos pocos KB: empaquetar ese runtime es precisamente lo que mantiene la extensión conforme.
+**Sobre la política de código remoto (Remote Hosted Code):** la extensión **no la incumple**. Lo que se descarga son ficheros de pesos `.onnx`, que son **datos**, no código ejecutable. Todo el código —incluido el runtime WASM de ONNX Runtime— viaja dentro del paquete y se ejecuta desde `chrome-extension://`. Por eso el `.zip` pesa 6.7 MB en lugar de unos pocos KB: empaquetar ese runtime es precisamente lo que mantiene la extensión conforme.
 
 Si el revisor pregunta por la conexión de red, la respuesta corta es: *"One-time download of public model weights (data, not code) from the HuggingFace CDN. No user data is transmitted."*

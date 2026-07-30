@@ -6,16 +6,20 @@ import manifest from './manifest.json';
 
 const ORT_DIST = resolve(__dirname, 'node_modules/onnxruntime-web/dist');
 
-// The runtime picks its binary from what the browser supports, so both async
-// variants ship: JSPI where WebAssembly.Suspending exists, asyncify otherwise.
+// Which variant the runtime loads depends on the ORT build *and* the browser,
+// and is only knowable by watching the Network tab. Measured, not deduced:
 //
-// Excluded: `jsep` (WebGPU backend only, and we run on WASM) and the plain
-// non-async build, which transformers never requests because inference is
-// always async. Confirm against the Network tab before trimming further —
-// which file gets fetched is not knowable from the source.
+//   webgpu/jsep build  -> asyncify        (we no longer use this build)
+//   wasm-only build    -> plain           <- confirmed in Chrome
+//
+// So `plain` is what actually gets fetched. `jspi` ships as insurance for
+// browsers exposing WebAssembly.Suspending, where the runtime may prefer it;
+// its absence would silently drop those users to the LanguageModel fallback.
+// `asyncify` is excluded: it belonged to the WebGPU build, and shipping it cost
+// 22.5 MB for nothing.
 const ORT_FILES = [
-    'ort-wasm-simd-threaded.asyncify.wasm',
-    'ort-wasm-simd-threaded.asyncify.mjs',
+    'ort-wasm-simd-threaded.wasm',
+    'ort-wasm-simd-threaded.mjs',
     'ort-wasm-simd-threaded.jspi.wasm',
     'ort-wasm-simd-threaded.jspi.mjs',
 ];

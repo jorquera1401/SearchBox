@@ -56,11 +56,12 @@ unset, the ONNX runtime dynamically imports its loader from the jsdelivr CDN,
 which the extension CSP blocks. It surfaces as the unhelpful
 `no available backend found`. `vite.config.ts` copies the binaries to `ort/`.
 
-**Which ORT binary gets used is decided by the browser at runtime**, not at
-build time: the JSPI build where `WebAssembly.Suspending` exists, the asyncify
-build otherwise. Both ship, which is most of the package size. Before trimming,
-check the Network tab for what is actually fetched rather than reasoning about
-it — two attempts were lost to guessing here.
+**Which ORT binary gets used is only knowable by watching the Network tab.** It
+depends on the ORT build and on the browser. Measured: the wasm-only build (what
+`vite.config.ts` aliases to) fetches the plain `ort-wasm-simd-threaded.*`; the
+WebGPU build fetched `asyncify` instead. `jspi` also ships as insurance for
+browsers exposing `WebAssembly.Suspending`. Three attempts were lost to
+reasoning about this instead of measuring it — do not repeat that.
 
 **`numThreads = 1`.** Multi-threaded WASM needs `SharedArrayBuffer`, which
 needs COOP/COEP headers that extension pages do not have.
