@@ -4,7 +4,7 @@
 
 ## 1. Preparación
 
-- **Manifest**: Versión `1.1.0` y descripción limpia.
+- **Manifest**: Versión `1.2.0` y descripción limpia.
 - **Privacidad**: `PRIVACY.md` está actualizado con la descarga del modelo.
 - **Paquete**: Genera `dist.zip` desde cero antes de cada envío:
 
@@ -13,7 +13,7 @@ npm run build
 rm -f dist.zip && cd dist && zip -rq ../dist.zip . -x ".vite/*" && cd ..
 ```
 
-El paquete pesa unos **13 MB**. La mayor parte es el runtime WASM de ONNX Runtime, que debe viajar dentro de la extensión (ver Sección 7).
+El `.zip` pesa unos **9 MB** (38 MB descomprimido). Casi todo es el runtime WASM de ONNX Runtime, que debe viajar dentro de la extensión (ver Sección 7).
 
 ## 2. Cuenta de Desarrollador
 
@@ -32,8 +32,11 @@ Completa los campos obligatorios:
 - **Descripción**: Explica qué hace la extensión. Menciona que la búsqueda semántica corre **localmente en el dispositivo**, sin enviar tus pestañas a ningún servidor.
 - **Categoría**: "Productividad" o "Herramientas de búsqueda".
 - **Idioma**: Español (o el que prefieras como principal).
-- **Icono**: Sube `public/icons/store-icon-128.png` (PNG de 128x128).
-- **Capturas de pantalla**: Hay material listo en `public/store-assets/`. Sube al menos una de 1280x800px.
+- **Icono**: Sube `store-assets/store-icon-128.png` (PNG de 128x128).
+- **Tiles promocionales**: `store-assets/store-promo-small-440x280.png` y `store-promo-marquee-1400x560.png`.
+- **Capturas de pantalla**: 1280x800px. Las de `store-assets/` están **desactualizadas** — no muestran el toggle de IA ni la barra de progreso. Recaptúralas antes de enviar.
+
+Todo el arte de marca se regenera con `npm run assets` desde `scripts/generate-assets.mjs`. Vive fuera de `public/` a propósito: ese directorio se copia entero dentro de la extensión, y enviar tiles promocionales a cada usuario es peso muerto.
 
 ## 5. Privacidad (Privacy)
 
@@ -61,9 +64,9 @@ Completa los campos obligatorios:
 
 Este es el punto que más mira la revisión. Describe el funcionamiento con precisión:
 
-- **Camino principal**: la extensión descarga, la primera vez que el usuario activa la IA, los **pesos de un modelo público de embeddings** (`Xenova/paraphrase-multilingual-MiniLM-L12-v2`, ~129 MB) desde el CDN de HuggingFace. Esa descarga es idéntica para todos los usuarios y **no contiene ningún dato del usuario**. Los pesos quedan cacheados y toda la inferencia ocurre en el dispositivo.
+- **Camino principal**: la extensión descarga, la primera vez que el usuario activa la IA, los **pesos de un modelo público de embeddings** (`Xenova/multilingual-e5-small`, ~129 MB) desde el CDN de HuggingFace. Esa descarga es idéntica para todos los usuarios y **no contiene ningún dato del usuario**. Los pesos quedan cacheados y toda la inferencia ocurre en el dispositivo.
 - **Fallback**: si el modelo no puede cargarse, se usa la **Chrome Built-in AI API (`window.LanguageModel`)**, también on-device.
 
-**Sobre la política de código remoto (Remote Hosted Code):** la extensión **no la incumple**. Lo que se descarga son ficheros de pesos `.onnx`, que son **datos**, no código ejecutable. Todo el código —incluido el runtime WASM de ONNX Runtime— viaja dentro del paquete y se ejecuta desde `chrome-extension://`. Por eso el `.zip` pesa 13 MB en lugar de unos pocos KB: empaquetar ese runtime es precisamente lo que mantiene la extensión conforme.
+**Sobre la política de código remoto (Remote Hosted Code):** la extensión **no la incumple**. Lo que se descarga son ficheros de pesos `.onnx`, que son **datos**, no código ejecutable. Todo el código —incluido el runtime WASM de ONNX Runtime— viaja dentro del paquete y se ejecuta desde `chrome-extension://`. Por eso el `.zip` pesa 9 MB en lugar de unos pocos KB: empaquetar ese runtime es precisamente lo que mantiene la extensión conforme.
 
 Si el revisor pregunta por la conexión de red, la respuesta corta es: *"One-time download of public model weights (data, not code) from the HuggingFace CDN. No user data is transmitted."*

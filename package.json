@@ -1,11 +1,14 @@
 {
     "name": "tab-wind-command",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "Fast tab search and switching command palette.",
     "scripts": {
         "dev": "vite",
         "build": "vite build",
-        "preview": "vite preview"
+        "preview": "vite preview",
+        "assets": "node scripts/generate-assets.mjs",
+        "test": "vitest run",
+        "typecheck": "tsc --noEmit"
     },
     "keywords": [],
     "author": "",
@@ -14,8 +17,10 @@
         "@crxjs/vite-plugin": "^2.0.0-beta.23",
         "@types/chrome": "^0.0.260",
         "@types/node": "^20.10.0",
+        "sharp": "^0.35.3",
         "typescript": "^5.3.3",
-        "vite": "^5.0.10"
+        "vite": "^5.0.10",
+        "vitest": "^4.1.10"
     },
     "dependencies": {
         "@huggingface/transformers": "^4.2.0"

@@ -195,3 +195,9 @@ ul::-webkit-scrollbar-thumb {
     background: #1d4ed8;
     transition: width 0.3s ease;
 }
+
+li.empty {
+    padding: 16px;
+    color: #888;
+    text-align: center;
+}
