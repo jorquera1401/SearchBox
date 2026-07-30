@@ -66,11 +66,18 @@ reasoning about this instead of measuring it — do not repeat that.
 **`numThreads = 1`.** Multi-threaded WASM needs `SharedArrayBuffer`, which
 needs COOP/COEP headers that extension pages do not have.
 
-**Embedding scores are not comparable across models.** e5 packs them into a
-narrow, high band (relevant ~0.85, irrelevant ~0.75); the paraphrase model
-spreads them much lower. The cutoff lives in `offscreen/models.ts` and travels
-with the rank response. e5 also requires its `query: ` / `passage: ` prefixes —
-omitting them measurably degrades results.
+**Relevance is decided relatively, not by a fixed score.** Measured on real
+tabs, e5 puts every score between 0.76 and 0.84 with unrelated tabs around 0.79,
+so any constant cutoff lands inside the noise band — 0.8 admitted 10 of 11 tabs
+for a query matching none of them. `offscreen/relevance.ts` instead derives a
+cutoff per query: it requires the top score to pull away from the median
+(otherwise nothing matches) and then keeps whatever sits within a margin of the
+best. This also handles half-typed words for free, since they score flat. The
+tuning constants live in `offscreen/models.ts`, and `relevance.test.ts` pins
+them against real captured distributions — re-measure before changing them.
+
+e5 also requires its `query: ` / `passage: ` prefixes; omitting them measurably
+degrades results.
 
 **The vector cache is namespaced per model and per text format.** Mixing
 vectors from two embedding spaces does not fail loudly, it just ranks badly.

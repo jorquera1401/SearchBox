@@ -187,15 +187,15 @@ export class Palette {
         if (this.input.value.trim() !== query) return;
 
         try {
-            const { ranked, threshold } = await this.semantic.rankTabs(query, this.openTabs);
+            const { ranked, cutoff } = await this.semantic.rankTabs(query, this.openTabs);
             if (this.input.value.trim() !== query) return;
 
             logger.log(
-                `Tab Wind: scores for "${query}" — threshold ${threshold}, ${ranked.length} scored`,
-                formatScores(this.openTabs, ranked, threshold)
+                `Tab Wind: scores for "${query}" — cutoff ${cutoff}, ${ranked.length} scored`,
+                formatScores(this.openTabs, ranked, cutoff)
             );
 
-            const merged = mergeRanking(this.openTabs, keywordResults, ranked, threshold);
+            const merged = mergeRanking(this.openTabs, keywordResults, ranked, cutoff);
             if (merged.length > 0) this.render(merged);
         } catch (err) {
             console.error('Tab Wind: Semantic search error', err);

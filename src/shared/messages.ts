@@ -44,7 +44,8 @@ export interface BackgroundResponses {
     'switch-tab': { status: 'ok' };
     'semantic-status': ModelStatus;
     'semantic-init': ModelStatus;
-    'semantic-rank': { results: RankedTab[]; threshold: number };
+    /** `cutoff` is computed per query from the score distribution, not fixed. */
+    'semantic-rank': { results: RankedTab[]; cutoff: number };
     'ai-enabled-get': { enabled: boolean };
     'ai-enabled-set': { status: 'ok' };
 }
@@ -73,7 +74,7 @@ export interface OffscreenResponses {
     STATUS: ModelStatus;
     INIT: ModelStatus;
     EMBED_TABS: { ok: true; embedded: number } | Failure;
-    RANK: { ok: true; results: RankedTab[]; threshold: number } | Failure;
+    RANK: { ok: true; results: RankedTab[]; cutoff: number } | Failure;
 }
 
 /** An offscreen message once tagged for delivery. */

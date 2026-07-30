@@ -78,9 +78,8 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendR
                 (response) =>
                     sendResponse({
                         results: response?.ok ? response.results : [],
-                        // 1 is unreachable for cosine on distinct texts, so a
-                        // failed rank admits nothing rather than everything.
-                        threshold: response?.ok ? response.threshold : 1,
+                        // Unreachable, so a failed rank admits nothing.
+                        cutoff: response?.ok ? response.cutoff : Infinity,
                     } satisfies BackgroundResponses['semantic-rank'])
             );
             return true;

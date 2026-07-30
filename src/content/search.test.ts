@@ -45,12 +45,12 @@ describe('mergeRanking', () => {
         expect(merged.map((t) => t.id)).toEqual([3, 2, 1]);
     });
 
-    it('keeps a literal match that scores below the threshold', () => {
+    it('keeps a literal match that scores below the cutoff', () => {
         const keyword = keywordFilter(TABS, 'invoice');
         expect(mergeRanking(TABS, keyword, ranked, 0.8).map((t) => t.id)).toContain(1);
     });
 
-    it('drops non-matching tabs below the threshold', () => {
+    it('drops non-matching tabs below the cutoff', () => {
         expect(mergeRanking(TABS, [], ranked, 0.8).map((t) => t.id)).toEqual([3, 2]);
     });
 
@@ -74,7 +74,7 @@ describe('mergeRanking', () => {
 });
 
 describe('formatScores', () => {
-    it('marks only entries at or above the threshold', () => {
+    it('marks only entries at or above the cutoff', () => {
         const lines = formatScores(TABS, [{ id: 3, score: 0.9 }, { id: 1, score: 0.4 }], 0.8);
         expect(lines[0].startsWith('✓')).toBe(true);
         expect(lines[1].startsWith('✓')).toBe(false);

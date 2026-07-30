@@ -20,7 +20,7 @@ export function keywordFilter(tabs: TabData[], query: string): TabData[] {
  *
  * Ordering is entirely the model's call, including for tabs that match
  * literally. Inclusion is not: a literal match is never dropped for scoring
- * below the threshold, because typing a title verbatim and watching it vanish
+ * below the cutoff, because typing a title verbatim and watching it vanish
  * reads as a broken search rather than a judgement call. Tabs with no vector
  * yet are absent from `ranked` altogether, so literal matches are re-appended.
  */
@@ -28,7 +28,7 @@ export function mergeRanking(
     tabs: TabData[],
     keywordResults: TabData[],
     ranked: RankedTab[],
-    threshold: number
+    cutoff: number
 ): TabData[] {
     const byId = new Map(tabs.map((tab) => [tab.id, tab]));
     const keywordIds = new Set(keywordResults.map((tab) => tab.id));
@@ -37,7 +37,7 @@ export function mergeRanking(
     const included = new Set<number>();
 
     for (const { id, score } of ranked) {
-        if (score < threshold && !keywordIds.has(id)) continue;
+        if (score < cutoff && !keywordIds.has(id)) continue;
         const tab = byId.get(id);
         if (!tab || included.has(id)) continue;
         merged.push(tab);
@@ -57,12 +57,12 @@ export function mergeRanking(
  * Formats scores for the console. Deep enough to show where an expected tab
  * landed, which is what separates "cutoff too high" from "ranking is wrong".
  */
-export function formatScores(tabs: TabData[], ranked: RankedTab[], threshold: number, limit = 30): string[] {
+export function formatScores(tabs: TabData[], ranked: RankedTab[], cutoff: number, limit = 30): string[] {
     const byId = new Map(tabs.map((tab) => [tab.id, tab]));
 
     return ranked.slice(0, limit).map((entry, index) => {
         const title = byId.get(entry.id)?.title || '?';
-        const mark = entry.score >= threshold ? '✓' : ' ';
+        const mark = entry.score >= cutoff ? '✓' : ' ';
         return `${mark} #${index + 1} ${entry.score.toFixed(3)}  ${title.slice(0, 60)}`;
     });
 }

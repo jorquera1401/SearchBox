@@ -10,13 +10,13 @@ export type SemanticState = ModelState | 'fallback';
 export interface RankResult {
     /** Every tab that could be scored, best first and unfiltered. */
     ranked: RankedTab[];
-    /** Cutoff below which a score is noise, on the active model's scale. */
-    threshold: number;
+    /** Score a tab must reach to count as a match, computed for this query. */
+    cutoff: number;
 }
 
 const POLL_INTERVAL_MS = 500;
 const FALLBACK_TIMEOUT_MS = 15000;
-const NOTHING: RankResult = { ranked: [], threshold: 1 };
+const NOTHING: RankResult = { ranked: [], cutoff: Infinity };
 
 export class SemanticClient {
     private state: SemanticState = 'idle';
@@ -105,7 +105,7 @@ export class SemanticClient {
     async rankTabs(query: string, tabs: TabRef[]): Promise<RankResult> {
         if (this.state === 'fallback') {
             // The LLM already filtered for relevance; its scores are synthetic.
-            return { ranked: await this.rankViaLanguageModel(query, tabs), threshold: 0 };
+            return { ranked: await this.rankViaLanguageModel(query, tabs), cutoff: 0 };
         }
         if (this.state !== 'ready') return NOTHING;
 
@@ -115,7 +115,7 @@ export class SemanticClient {
             tabs: tabs.map((t) => ({ id: t.id, title: t.title, url: t.url })),
         });
 
-        return response ? { ranked: response.results, threshold: response.threshold } : NOTHING;
+        return response ? { ranked: response.results, cutoff: response.cutoff } : NOTHING;
     }
 
     // --- LanguageModel fallback ---

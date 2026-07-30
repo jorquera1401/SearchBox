@@ -9,6 +9,7 @@ import {
 } from '../shared/messages';
 import { embed, getStatus, loadModel, runExclusive } from './embedder';
 import { MODEL } from './models';
+import { computeCutoff } from './relevance';
 import { cacheKey, dot, embeddingText, vectorCache } from './vectorCache';
 
 /** Embeds any tabs missing from the cache. Returns how many were computed. */
@@ -81,7 +82,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
         case 'RANK':
             runExclusive(() => rank(message.query, message.tabs))
-                .then((results) => sendResponse({ ok: true, results, threshold: MODEL.threshold }))
+                .then((results) =>
+                    sendResponse({
+                        ok: true,
+                        results,
+                        cutoff: computeCutoff(results, MODEL.relevance),
+                    })
+                )
                 .catch((e) => sendResponse(fail(e)));
             return true;
     }
