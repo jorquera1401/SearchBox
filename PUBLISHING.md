@@ -34,7 +34,7 @@ Completa los campos obligatorios:
 - **Idioma**: Español (o el que prefieras como principal).
 - **Icono**: Sube `store-assets/store-icon-128.png` (PNG de 128x128).
 - **Tiles promocionales**: `store-assets/store-promo-small-440x280.png` y `store-promo-marquee-1400x560.png`.
-- **Capturas de pantalla**: 1280x800px. Las de `store-assets/` están **desactualizadas** — no muestran el toggle de IA ni la barra de progreso. Recaptúralas antes de enviar.
+- **Capturas de pantalla**: 1280x800px. Las de `store-assets/` ya muestran el toggle de IA y la barra de progreso de descarga.
 
 Todo el arte de marca se regenera con `npm run assets` desde `scripts/generate-assets.mjs`. Vive fuera de `public/` a propósito: ese directorio se copia entero dentro de la extensión, y enviar tiles promocionales a cada usuario es peso muerto.
 
