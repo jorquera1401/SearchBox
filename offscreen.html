@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Tab Wind Embedding Worker</title>
+</head>
+
+<body>
+    <!--
+      Offscreen document. Never visible.
+
+      Its only job is to host the embedding model in a single shared context:
+      the content script is injected into <all_urls>, so loading the model
+      there would mean one copy per open tab.
+    -->
+    <script type="module" src="/src/offscreen/index.ts"></script>
+</body>
+
+</html>
