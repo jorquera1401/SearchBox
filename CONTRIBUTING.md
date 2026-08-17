@@ -24,12 +24,17 @@ plain git.
 
 ## Enforcement
 
-- **Direct pushes to `develop` or `master` are blocked locally** by
-  [`.githooks/pre-push`](.githooks/pre-push). Running `npm install` wires it
-  up automatically via the `prepare` script (`git config core.hooksPath
-  .githooks`), so this applies to every clone, not just one machine.
-  Escape hatch for the rare legitimate case: `SKIP_PUSH_PROTECTION=1 git
-  push`.
+- **Commits directly on `develop` or `master`, and pushes that would update
+  them, are both blocked locally** by
+  [`.githooks/pre-commit`](.githooks/pre-commit) and
+  [`.githooks/pre-push`](.githooks/pre-push) — the commit hook catches the
+  mistake immediately, the push hook is the backstop in case a commit slips
+  through some other way (e.g. it was already there before switching
+  branches). Running `npm install` wires both up automatically via the
+  `prepare` script (`git config core.hooksPath .githooks`), so this applies
+  to every clone, not just one machine. Escape hatch for the rare legitimate
+  case: `SKIP_BRANCH_PROTECTION=1 git commit ...` /
+  `SKIP_BRANCH_PROTECTION=1 git push`.
 - **CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs
   `typecheck`, `test`, and `build` on every push and every PR — this is
   what actually gates a PR being mergeable, independent of the local hook.

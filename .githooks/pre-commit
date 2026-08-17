@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Blocks commits made directly on develop or master. Both branches only move
+# via a merged PR from a feature/release/hotfix branch -- this catches the
+# mistake at commit time, before it ever gets to the pre-push check.
+#
+# Escape hatch for the rare legitimate case:
+#   SKIP_BRANCH_PROTECTION=1 git commit ...
+
+protected_branches="develop master"
+
+if [ -n "$SKIP_BRANCH_PROTECTION" ]; then
+    exit 0
+fi
+
+branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+for protected in $protected_branches; do
+    if [ "$branch" = "$protected" ]; then
+        echo "Commit rejected: '$protected' only moves via a merged pull request." >&2
+        echo "Create a feature/release/hotfix branch instead: git checkout -b feature/my-thing" >&2
+        echo "If this is intentional, rerun with: SKIP_BRANCH_PROTECTION=1 git commit ..." >&2
+        exit 1
+    fi
+done
+
+exit 0

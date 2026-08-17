@@ -4,11 +4,11 @@
 # enforced client-side, before the push even reaches the remote.
 #
 # Escape hatch for the rare legitimate case (reverting a bad merge, etc.):
-#   SKIP_PUSH_PROTECTION=1 git push
+#   SKIP_BRANCH_PROTECTION=1 git push
 
 protected_branches="develop master"
 
-if [ -n "$SKIP_PUSH_PROTECTION" ]; then
+if [ -n "$SKIP_BRANCH_PROTECTION" ]; then
     exit 0
 fi
 
@@ -18,7 +18,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     for protected in $protected_branches; do
         if [ "$branch" = "$protected" ]; then
             echo "Push rejected: '$protected' only moves via a merged pull request, not a local push." >&2
-            echo "If this is intentional, rerun with: SKIP_PUSH_PROTECTION=1 git push" >&2
+            echo "If this is intentional, rerun with: SKIP_BRANCH_PROTECTION=1 git push" >&2
             exit 1
         fi
     done
