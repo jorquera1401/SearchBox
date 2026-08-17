@@ -2,8 +2,9 @@
 
 export const logger = {
     log: (...args: any[]) => {
-        // Enforce logging for now to help with debugging
-        console.log(...args);
+        if (import.meta.env.DEV) {
+            console.log(...args);
+        }
     },
     warn: (...args: any[]) => {
         if (import.meta.env.DEV) {

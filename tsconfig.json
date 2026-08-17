@@ -13,6 +13,10 @@
         "resolveJsonModule": true,
         "isolatedModules": true,
         "noEmit": true,
+        // @huggingface/tokenizers ships .d.ts files with unresolved path
+        // aliases (@utils, @static/*), which fail typecheck through no fault
+        // of ours.
+        "skipLibCheck": true,
         "strict": true,
         "noUnusedLocals": true,
         "noUnusedParameters": true,

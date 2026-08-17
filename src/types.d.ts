@@ -1,20 +1,16 @@
-// Global type definitions
+// Global type definitions.
 
 interface Window {
+    /** Set by the content script to guard against double injection. */
     hasTabWindRun?: boolean;
-    ai?: {
-        languageModel?: {
-            create(options?: any): Promise<any>;
-            capabilities(): Promise<any>;
-        };
-        // Experimental Embedding API
-        embedding?: {
-            create(options?: any): Promise<any>;
-            capabilities(): Promise<any>;
-        }
-    };
-    model?: any; // Fallback for some experimental builds
-}
 
-// Add Chrome AI Prompt API types if they become standard/available
-// For now, we use 'any' for the experimental API to avoid compilation blockers.
+    /**
+     * Chrome's built-in on-device LLM, used as a fallback when the embedding
+     * model cannot load. Only reachable from the main world, which is why
+     * public/ai-bridge.js exists. Typed loosely: the API is still changing.
+     */
+    LanguageModel?: {
+        availability(): Promise<string>;
+        create(options?: any): Promise<any>;
+    };
+}
