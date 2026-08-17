@@ -82,7 +82,7 @@ function initContentScript() {
   let selectedIndex = 0;
 
   // --- Event Listeners ---
-  chrome.runtime.onMessage.addListener((request: any, sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((request: any, _sender, sendResponse) => {
     console.log("Tab Wind: Message received in content script:", request);
     if (request.action === "toggle-modal") {
       if (overlay.classList.contains('visible')) {
